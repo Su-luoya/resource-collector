@@ -68,6 +68,7 @@ npm install
 npm run dev      # 本地预览 http://localhost:4321/resource-collector（带增删改）
 npm run check    # 校验 links.yaml（字段、去重、日期、type/topics 白名单）
 npm test         # 跑 test/ 下的单元测试与数据不变量（node --test）
+npm run typecheck # astro check：TS / Astro 类型检查
 npm run build    # 生成 dist/
 npm run preview  # 预览构建产物
 npm run links    # 手动探测全部链接可用性 → src/data/link-status.json
