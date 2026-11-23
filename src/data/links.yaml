@@ -1,0 +1,544 @@
+# 资源库数据（唯一事实源）
+# 字段：title 名称 / url 链接 / tags 标签 / desc 一句中文简介 / added 收录日期
+# 新增条目：直接追加到文件末尾，然后 commit。标签见 TAGS.md。
+# 注意：不要收录带登录态的控制台、付费后台、校内门户链接；服务类只放官网首页。
+
+- title: Michael Hasler
+  url: https://sites.google.com/view/michaelhasler/home
+  tags: [econ]
+  desc: 多伦多大学金融学者主页，研究方向为期权定价、不确定性与资产定价。
+  added: 2026-04-28
+
+- title: Sydney C. Ludvigson
+  url: https://www.sydneyludvigson.com/
+  tags: [econ]
+  desc: NYU 宏观金融学者主页，研究消费、财富与不确定性对资产价格的影响。
+  added: 2026-04-28
+
+- title: Hui Chen
+  url: https://mitsloan.mit.edu/faculty/directory/hui-chen
+  tags: [econ]
+  desc: MIT Sloan 金融学教授，研究资产定价、宏观金融与 ESG 定价。
+  added: 2026-04-28
+
+- title: Alejandro Rivera
+  url: https://sites.google.com/site/alejandroriveramesias/?pli=1
+  tags: [econ]
+  desc: 资产定价与信息经济学方向的学者主页，含论文与讲义。
+  added: 2026-04-28
+
+- title: Adrien d'Avernas
+  url: https://www.adriendavernas.com/
+  tags: [econ]
+  desc: 金融学者主页，研究信用风险与宏观金融，PyMacroFin 的作者。
+  added: 2026-04-28
+
+- title: Jesús Fernández-Villaverde
+  url: https://www.sas.upenn.edu/~jesusfv/index.html
+  tags: [econ, ml]
+  desc: 宾大宏观经济学家主页，近年主推用深度学习求解与估计经济模型。
+  added: 2026-04-28
+
+- title: Pedro H. C. Sant'Anna
+  url: https://psantanna.com/
+  tags: [econ, method]
+  desc: 计量经济学者主页，双重差分与处理效应方法（含 DiD 资源合集）。
+  added: 2026-04-28
+
+- title: Chuck Fang
+  url: https://www.chuckfang.finance/
+  tags: [econ]
+  desc: 金融学者主页，研究方向为资产定价与机器学习在金融中的应用。
+  added: 2026-04-28
+
+- title: NBER Working Papers · Asset Pricing
+  url: https://www.nber.org/papers?facet=programs%3AAsset%20Pricing&page=1&perPage=50&sortBy=public_date
+  tags: [econ, data]
+  desc: NBER 资产定价方向工作论文列表，按发布日期排序，可直接跟进最新前沿。
+  added: 2026-04-28
+
+- title: Ties de Kok
+  url: https://www.tiesdekok.com/
+  tags: [method]
+  desc: 研究数据获取与研究工作流（Python、会计金融数据）的作者主页与教程索引。
+  added: 2026-04-28
+
+- title: Mingze Gao
+  url: https://mingze-gao.com/
+  tags: [method]
+  desc: 会计与金融实证研究的工具、数据源与工作流笔记站。
+  added: 2026-04-28
+
+- title: 连享会
+  url: https://www.lianxh.cn/
+  tags: [method]
+  desc: 中文计量经济学社区，Stata/Python 实证方法推文与培训资料集中地。
+  added: 2026-04-28
+
+- title: Inexact Science
+  url: https://inexactscience.substack.com/
+  tags: [method, read]
+  desc: 关于实证研究方法与数据工作流的订阅通讯，讨论识别策略与复现实践。
+  added: 2026-04-28
+
+- title: Tidy Finance
+  url: https://www.tidy-finance.org/
+  tags: [method, quant]
+  desc: 在线书：用 R 与 Python 做可复现的实证资产定价，含完整代码与数据集。
+  added: 2026-04-28
+
+- title: Empirical Research in Accounting（far_book）
+  url: https://iangow.github.io/far_book/
+  tags: [method, econ]
+  desc: 会计实证研究工具与方法的在线书，覆盖数据获取、清理与回归流程。
+  added: 2026-07-23
+
+- title: Empirical Research in Accounting（Python 版）
+  url: https://iangow.github.io/era_pl_book/
+  tags: [method, python]
+  desc: 同一作者的 Python 版本教程，把会计实证研究流程全部用 Python 实现。
+  added: 2026-11-14
+
+- title: DiD Resources
+  url: https://psantanna.com/did-resources/
+  tags: [method, econ]
+  desc: 双重差分（DiD）方法的文献、软件包与讲义合集，含交错处理等新进展。
+  added: 2026-11-19
+
+- title: 神经网络 + 模型校准文献总结
+  url: https://www.cnblogs.com/xuruilong100/p/18276288
+  tags: [method, ml]
+  desc: 博客文章，系统梳理用神经网络做结构模型校准的相关文献与方法思路。
+  added: 2026-04-28
+
+- title: Quarto Book 教程
+  url: https://lianxhcn.github.io/quarto_book/
+  tags: [method, latex]
+  desc: 用 Quarto 写书与写报告的中文教程，可与 LaTeX/HTML/Word 多格式输出。
+  added: 2026-04-28
+
+- title: 顶见
+  url: https://topsight.net/
+  tags: [search, econ]
+  desc: 经管顶刊与前沿工作论文的聚合浏览站，适合快速扫描新发表成果。
+  added: 2026-06-27
+
+- title: Google Scholar
+  url: https://scholar.google.com.hk/?hl=zh-CN
+  tags: [search]
+  desc: 谷歌学术，被引追踪与全文检索的主力入口（中文界面）。
+  added: 2026-04-28
+
+- title: 中国知网
+  url: https://www.cnki.net/
+  tags: [search]
+  desc: 中文期刊与学位论文数据库，需机构账号（如校内 IP）访问全文。
+  added: 2026-04-28
+
+- title: AMiner
+  url: https://www.aminer.cn/?f=zh
+  tags: [search]
+  desc: 学术知识图谱与学者画像检索，适合查作者、机构与领域脉络。
+  added: 2026-04-28
+
+- title: Economic Policy Uncertainty Index
+  url: https://www.policyuncertainty.com/index.html
+  tags: [data, econ]
+  desc: Baker-Bloom-Davis 经济政策不确定性指数，各国月度数据可直接下载。
+  added: 2026-04-28
+
+- title: WRDS Contributed Data Forms
+  url: https://wrds-www.wharton.upenn.edu/pages/get-data/contributed-data-forms/
+  tags: [data]
+  desc: WRDS 平台上的贡献数据集目录，多为学术专用数据库的入口（需机构订阅）。
+  added: 2026-04-28
+
+- title: Analytext
+  url: https://www.analytext.com/
+  tags: [data]
+  desc: SEC  filings 预解析文本数据仓库，免去自己爬取与清洗 10-K/10-Q 的成本。
+  added: 2026-08-03
+
+- title: SRAF（Software Repository for Accounting and Finance）
+  url: https://sraf.nd.edu/
+  tags: [data]
+  desc: 圣母大学会计金融软件库，提供文本分析词典、行业分类等公开数据与代码。
+  added: 2026-11-14
+
+- title: Open Source Asset Pricing
+  url: https://www.openassetpricing.com/data/
+  tags: [data, quant]
+  desc: 公开的资产定价因子库与复现结果，可直接下载因子收益数据做对比研究。
+  added: 2026-04-28
+
+- title: fredapi
+  url: https://pypi.org/project/fredapi/
+  tags: [data, python]
+  desc: 从 Python 读取 FRED/ALFRED 宏观数据的轻量客户端，装好即可拉序列。
+  added: 2026-04-28
+
+- title: Polars 官方文档
+  url: https://docs.pola.rs/
+  tags: [python]
+  desc: Polars 的官方 API 文档，Rust 内核的多线程 DataFrame 库，大表比 pandas 快。
+  added: 2026-04-28
+
+- title: Polars 中文用户指南
+  url: https://pola-rs.github.io/polars-book-cn/user-guide/introduction.html
+  tags: [python]
+  desc: Polars 官方文档的中文译本，从表达式到惰性求值的顺序教程。
+  added: 2026-04-28
+
+- title: itables
+  url: https://mwouts.github.io/itables/quick_start.html
+  tags: [python]
+  desc: 把 Jupyter 里的 DataFrame 变成可排序、可搜索的交互表格，一行代码接入。
+  added: 2026-04-28
+
+- title: uv
+  url: https://docs.astral.sh/uv/
+  tags: [python]
+  desc: Astral 出品的极快 Python 包与环境管理器，可替代 pip/venv/pyenv 工作流。
+  added: 2026-04-28
+
+- title: wrapt
+  url: https://wrapt.readthedocs.io/en/master/
+  tags: [python]
+  desc: 透明对象代理与函数装饰库，做装饰器、猴子补丁时比标准库更省心。
+  added: 2026-04-28
+
+- title: Python 黑魔法
+  url: https://magic.iswbm.com/index.html
+  tags: [python]
+  desc: 中文在线书，讲 Python 进阶技巧、元类与冷门但实用的语言特性。
+  added: 2026-04-28
+
+- title: StatsModels
+  url: https://www.statsmodels.org/0.9.0/index.html
+  tags: [python, method]
+  desc: Python 的统计建模库文档（0.9.0 版），回归、时间序列与假设检验齐备。
+  added: 2026-04-28
+
+- title: StatsPAI
+  url: https://github.com/brycewang-stanford/statspai
+  tags: [python, method]
+  desc: 面向因果推断与应用计量的 Python 库，接口贴近 Stata 的估计命令习惯。
+  added: 2026-04-28
+
+- title: pyfixest skills
+  url: https://pyfixest.org/skills.html
+  tags: [python, method]
+  desc: pyfixest 的多重固定效应回归用法索引，写法对应 R 的 fixest 包。
+  added: 2026-07-11
+
+- title: JAX 快速入门
+  url: https://jax.readthedocs.io/en/latest/quickstart.html
+  tags: [python, ml]
+  desc: JAX 官方 quickstart，讲 jit、grad、vmap 与自动微分的基本组合方式。
+  added: 2026-04-28
+
+- title: Equinox
+  url: https://docs.kidger.site/equinox/
+  tags: [python, ml]
+  desc: 用 PyTree 写 JAX 神经网络的库，强调类型化模块与可调试的模块化代码。
+  added: 2026-04-28
+
+- title: Optimistix
+  url: https://docs.kidger.site/optimistix/
+  tags: [python, ml]
+  desc: JAX 上的非线性求解、最小二乘与优化库，适合把求解器嵌进模型。
+  added: 2026-04-28
+
+- title: lineax
+  url: https://docs.kidger.site/lineax/
+  tags: [python, ml]
+  desc: JAX 的线性求解器库，支持稀疏结构与自定义求解策略，可与优化器组合。
+  added: 2026-04-28
+
+- title: JAXopt
+  url: https://jaxopt.github.io/stable/
+  tags: [python, ml]
+  desc: 谷歌的 JAX 优化与隐式微分库，可微优化层常用于结构模型与双层问题。
+  added: 2026-04-28
+
+- title: Haiku
+  url: https://dm-haiku.readthedocs.io/en/latest/
+  tags: [python, ml]
+  desc: DeepMind 的 JAX 神经网络库，采用无状态模块写法，风格接近 Sonnet。
+  added: 2026-04-28
+
+- title: PyTorch
+  url: https://pytorch.org/
+  tags: [ml]
+  desc: PyTorch 官网，文档、教程与安装命令入口，深度学习的事实标准框架之一。
+  added: 2026-04-28
+
+- title: DeepXDE
+  url: https://deepxde.readthedocs.io/en/latest/
+  tags: [ml]
+  desc: 物理信息神经网络（PINN）库，用微分方程约束训练网络解 PDE 与反问题。
+  added: 2026-04-28
+
+- title: ChronoBERT
+  url: https://huggingface.co/collections/manelalab/chronobert-67c1ca6c2382e03aaec446f8
+  tags: [ml, data]
+  desc: 面向金融文本的 BERT 系列模型集合，用于财报与新闻的情绪/风险建模。
+  added: 2026-04-28
+
+- title: Deep Learning for Solving Economic Models
+  url: https://www.sas.upenn.edu/~jesusfv/deeplearning.html
+  tags: [ml, econ]
+  desc: 用深度学习求解与估计宏观模型的论文、代码与讲义合集。
+  added: 2026-05-12
+
+- title: Gymnasium
+  url: https://gymnasium.farama.org/
+  tags: [ml]
+  desc: 强化学习环境的标准接口库（OpenAI Gym 的维护后继），自带经典环境。
+  added: 2026-04-28
+
+- title: Stable-Baselines3
+  url: https://stable-baselines3.readthedocs.io/en/master/index.html
+  tags: [ml]
+  desc: PyTorch 实现的强化学习算法集合，PPO/SAC/DQN 等开箱即用，适合做基线。
+  added: 2026-04-28
+
+- title: EconRL
+  url: https://github.com/SimonHashtag/EconRL
+  tags: [ml, econ]
+  desc: 用强化学习求解经济学与金融问题的论文合集与代码索引。
+  added: 2026-04-28
+
+- title: 动手学强化学习
+  url: https://hrl.boyuai.com/
+  tags: [ml]
+  desc: 中文强化学习在线教材，理论与代码并重，配可运行的实验环境。
+  added: 2026-04-28
+
+- title: QuantLib 官网
+  url: https://www.quantlib.org/
+  tags: [quant]
+  desc: 开源定量金融库官网，覆盖衍生品定价、期限结构与日历等基础组件。
+  added: 2026-04-28
+
+- title: QuantLib Python 文档
+  url: https://quantlib-python-docs.readthedocs.io/en/latest/index.html
+  tags: [quant, python]
+  desc: QuantLib 的 Python 绑定文档，按定价引擎与工具类逐项说明用法。
+  added: 2026-04-28
+
+- title: QuantEcon
+  url: https://quantecon.org/
+  tags: [quant, python, econ]
+  desc: 计算经济学的开源讲义与代码库（Python/Julia），宏观与动态规划内容扎实。
+  added: 2026-04-28
+
+- title: PyMacroFin 文档
+  url: https://adriendavernas.com/pymacrofin/index.html
+  tags: [quant, python]
+  desc: 宏观金融连续时间模型的 Python 求解库，做资产定价理论模型可直接出数值解。
+  added: 2026-04-28
+
+- title: FactorZoo（fire 工具包）
+  url: https://github.com/fire-institute/fire
+  tags: [quant, econ]
+  desc: 《Navigate the Factor Zoo》配套开源工具包，用于因子筛选与多重检验。
+  added: 2026-04-28
+
+- title: Overleaf
+  url: https://www.overleaf.com/
+  tags: [latex]
+  desc: 在线协作 LaTeX 编辑器，无需本地装 TeX 环境，模板与期刊格式齐全。
+  added: 2026-04-28
+
+- title: LaTeX 工作室
+  url: https://www.latexstudio.net/
+  tags: [latex]
+  desc: 中文 LaTeX 社区，模板、宏包说明与排版问题解答集中地。
+  added: 2026-04-28
+
+- title: LaTeX Documentation（runoob 镜像）
+  url: https://runebook.dev/cn/docs/latex/-index-#Footnotes
+  tags: [latex]
+  desc: LaTeX 命令的中文速查文档，按索引查具体宏命令的用法与参数。
+  added: 2026-04-28
+
+- title: LaTeX 表格转换工具
+  url: https://tableconvert.com/zh-cn/latex-generator
+  tags: [latex]
+  desc: 把 Excel/CSV 表格一键转成 LaTeX tabular 代码，省去手写列格式。
+  added: 2026-04-28
+
+- title: 用 natbib 管理参考文献
+  url: https://blog.csdn.net/xovee/article/details/109715706
+  tags: [latex]
+  desc: 中文教程，讲 natbib 的 citep/citet、作者年份制与常见编译报错处理。
+  added: 2026-04-28
+
+- title: biblatex-gb7714-2015
+  url: https://github.com/hushidong/biblatex-gb7714-2015
+  tags: [latex]
+  desc: 国标 GB/T 7714-2015 参考文献样式的 biblatex 实现，中文论文投稿必备。
+  added: 2026-04-28
+
+- title: EasyLaTeX
+  url: https://www.easylatex.ai/
+  tags: [latex, ai]
+  desc: 带 AI 辅助的在线 LaTeX 编辑器与研究笔记工作区，可边读文献边写稿。
+  added: 2026-04-28
+
+- title: natbib 教程（bibtex.eu）
+  url: https://bibtex.eu/zh-cn/natbib/
+  tags: [latex]
+  desc: natbib 与 BibTeX 的中文使用手册，覆盖引用样式配置与文献库组织。
+  added: 2026-04-28
+
+- title: CiteDrive
+  url: https://www.citedrive.com/
+  tags: [latex]
+  desc: 云端 BibTeX 文献库，可与 Overleaf 联动，按项目组织参考文献。
+  added: 2026-04-28
+
+- title: Bibtex Converter
+  url: https://asouqi.github.io/bibtex-converter/
+  tags: [latex]
+  desc: 在线把 BibTeX 条目转成 PDF/HTML/Word/纯文本等多种引用格式。
+  added: 2026-04-28
+
+- title: Ponder AI
+  url: https://ponder.ing/
+  tags: [ai, search]
+  desc: 面向学术研究的 AI 工作区，可检索数亿文献并生成带出处引用的综述草稿。
+  added: 2026-04-28
+
+- title: Genspark
+  url: https://www.genspark.ai/
+  tags: [ai]
+  desc: 通用 AI 代理平台，可联网检索并把结果整理成文档、幻灯片或表格。
+  added: 2026-04-28
+
+- title: Code2Prompt
+  url: https://code2prompt.dev/docs/welcome/
+  tags: [ai]
+  desc: 把代码仓库打包成结构化提示词，方便喂给大模型做代码审查与理解。
+  added: 2026-04-28
+
+- title: The Agent Skills Directory
+  url: https://skills.sh/
+  tags: [ai]
+  desc: Agent Skills 目录站，可检索并一键安装各类 AI Agent 的技能包。
+  added: 2026-04-28
+
+- title: SkillHub（腾讯）
+  url: https://skillhub.tencent.com/
+  tags: [ai]
+  desc: 腾讯的 AI 技能市场，按分类浏览可挂载到 Agent 上的技能。
+  added: 2026-04-28
+
+- title: SkillsBot
+  url: https://www.skillsbot.cn/
+  tags: [ai]
+  desc: 中文 AI 技能检索站，可按关键词（如 Zotero）找现成的 Agent 技能。
+  added: 2026-04-28
+
+- title: ClawHub
+  url: https://clawhub.ai/
+  tags: [ai]
+  desc: Agent 技能与工具的聚合社区，提供可直接调用的技能清单。
+  added: 2026-04-28
+
+- title: Agent Skills Marketplace
+  url: https://skillsmp.com/
+  tags: [ai]
+  desc: Agent 技能市场，按用途分类展示可下载的技能与配套说明。
+  added: 2026-04-28
+
+- title: Barrios Skills
+  url: https://johnmbarrios.com/barrios-skills/index.html
+  tags: [ai, econ]
+  desc: 芝加哥大学 John Barrios 的经济学研究 Skill 集，把实证流程固化给 Agent。
+  added: 2026-10-02
+
+- title: pAI-Econ-claude
+  url: https://github.com/maxwell2732/pAI-Econ-claude/blob/main/SKILL.md
+  tags: [ai, econ]
+  desc: Claude Code Skill，帮助实证经济学研究者补齐理论模型部分的工作流。
+  added: 2026-11-19
+
+- title: OpenEcon.ai
+  url: https://openecon.ai/
+  tags: [ai, econ]
+  desc: 面向经济学研究的开源 AI 工具集，可用自然语言查经济指标、生成 Stata 代码。
+  added: 2026-10-14
+
+- title: 禾维 AI（API 中转站比价）
+  url: https://www.hvoyai.com/
+  tags: [ai]
+  desc: API 中转站的可用性与价格对比、真假检测，选服务商前可先查口碑。
+  added: 2026-05-20
+
+- title: 老猫工具站
+  url: https://tools.acdiao.com/
+  tags: [ai]
+  desc: 在线工具与网址导航集合，含 AI 工具、设计字体、加密转换等近 500 款小工具。
+  added: 2026-04-28
+
+- title: AI 工具箱网
+  url: https://ai-tab.cn/
+  tags: [ai]
+  desc: 中文 AI 工具导航站，按用途分类收录常用生成式 AI 产品。
+  added: 2026-04-28
+
+- title: AutoDL
+  url: https://www.autodl.com/
+  tags: [service]
+  desc: 国内 GPU 租用平台官网，按小时计费，适合跑微调与深度学习实验。
+  added: 2026-04-28
+
+- title: SiliconFlow
+  url: https://www.siliconflow.cn/
+  tags: [service]
+  desc: 硅基流动官网，提供大模型与向量、重排模型的 API 推理服务。
+  added: 2026-04-28
+
+- title: xcode.best
+  url: https://xcode.best/
+  tags: [service]
+  desc: 海外 AI 服务访问与充值平台官网。
+  added: 2026-04-28
+
+- title: Pockyt
+  url: https://pockyt.io/
+  tags: [service]
+  desc: 跨境支付平台官网，用于给海外订阅与在线服务付款。
+  added: 2026-04-28
+
+- title: 新华财经
+  url: https://www.cnfic.com.cn/
+  tags: [service, data]
+  desc: 新华财经官网，中文财经资讯与行情数据平台。
+  added: 2026-04-28
+
+- title: Andrew Chen
+  url: https://andrewchen.com/list-of-essays/
+  tags: [read]
+  desc: 硅谷投资人 Andrew Chen 的文章全索引，主题是增长、网络效应与产品冷启动。
+  added: 2026-04-28
+
+- title: DPIT
+  url: https://dpit.lib00.com/content
+  tags: [read, ai]
+  desc: AI 模型与工具评测文章列表，跟踪各家新模型的能力与定价变化。
+  added: 2026-07-06
+
+- title: 徐瑞龙的博客
+  url: https://xuruilong100.github.io/
+  tags: [read, ml]
+  desc: 个人博客，写深度学习与经济学模型结合、数值方法与文献笔记。
+  added: 2026-04-28
+
+- title: SSRN Daily
+  url: https://ssrndaily.com/
+  tags: [read, econ]
+  desc: 每日汇总 SSRN 新上传论文的速览站，用于快速扫一遍当天的新工作论文。
+  added: 2026-07-14

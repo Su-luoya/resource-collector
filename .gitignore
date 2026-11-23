@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.DS_Store
+*.log
+
+# 书签原始导出（含校内/付费/机场等私有链接，禁止入库）
+raw/
+.scratch/
