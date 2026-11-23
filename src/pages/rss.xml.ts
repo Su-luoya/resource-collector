@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { links, TYPE_LABEL, TOPIC_LABEL } from '../lib/links';
+import { links, SECTION_LABEL, facetLabels } from '../lib/links';
 import { homeUrl } from '../lib/site';
 
 const esc = (s: string) =>
@@ -17,7 +17,11 @@ export const GET: APIRoute = () => {
         `      <guid isPermaLink="false">${esc(l.url)}</guid>`,
         `      <pubDate>${pub}</pubDate>`,
         `      <description>${esc(l.desc)}</description>`,
-        ...[TYPE_LABEL[l.type] ?? l.type, ...l.topics.map((t) => TOPIC_LABEL[t] ?? t)]
+        ...[
+          ...l.section.map((id) => SECTION_LABEL[id] ?? id),
+          ...l.section.flatMap((id) => facetLabels(l, id)),
+        ]
+          .filter((t, i, all) => all.indexOf(t) === i)
           .map((t) => `      <category>${esc(t)}</category>`),
         '    </item>',
       ].join('\n');

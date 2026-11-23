@@ -22,7 +22,34 @@ const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
 
 /** 一条链接的存储形态；字段顺序、引号规则见 src/lib/link-data.mjs */
-type LinkRow = { title: string; url: string; type: string; topics: string[]; desc: string; added: string };
+type FacetValues = Record<string, string | string[]>;
+type LinkRow = {
+  title: string;
+  url: string;
+  section: string[];
+  facets: Record<string, FacetValues>;
+  desc: string;
+  added: string;
+};
+
+/** 表单传来的 section / facets 只做形状清洗，取值合法性交给 validateRows 统一判定 */
+const readFacets = (body: Record<string, unknown>): Record<string, FacetValues> => {
+  const out: Record<string, FacetValues> = {};
+  if (!body.facets || typeof body.facets !== 'object' || Array.isArray(body.facets)) return out;
+  for (const [sid, values] of Object.entries(body.facets as Record<string, unknown>)) {
+    if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+    const one: FacetValues = {};
+    for (const [fid, raw] of Object.entries(values as Record<string, unknown>)) {
+      if (Array.isArray(raw)) one[fid] = [...new Set(raw.map((v) => String(v)).filter(Boolean))];
+      else if (typeof raw === 'string' && raw.trim()) one[fid] = raw.trim();
+    }
+    out[sid] = one;
+  }
+  return out;
+};
+
+const readSections = (body: Record<string, unknown>): string[] =>
+  Array.isArray(body.section) ? [...new Set(body.section.map((v) => String(v)).filter(Boolean))] : [];
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -128,11 +155,11 @@ const handleEdit = async (request: Request) => {
 
   if (action === 'add') {
     if (index >= 0) return json({ ok: false, message: `这条已在库里：${rows[index].url}` }, 409);
-    const row = {
+    const row: LinkRow = {
       title: clean(body.title, 80),
       url,
-      type: clean(body.type, 40),
-      topics: Array.isArray(body.topics) ? [...new Set(body.topics.map((t) => String(t)))] : [],
+      section: readSections(body),
+      facets: readFacets(body),
       desc: clean(body.desc, 120),
       added: clean(body.added, 10) || new Date().toISOString().slice(0, 10),
     };
@@ -154,11 +181,11 @@ const handleEdit = async (request: Request) => {
   }
 
   if (action === 'update') {
-    const row = {
+    const row: LinkRow = {
       title: clean(body.title, 80),
       url: rows[index].url, // url 是主键，不在这里改
-      type: clean(body.type, 40),
-      topics: Array.isArray(body.topics) ? [...new Set(body.topics.map((t) => String(t)))] : [],
+      section: readSections(body),
+      facets: readFacets(body),
       desc: clean(body.desc, 120),
       added: clean(body.added, 10) || rows[index].added,
     };

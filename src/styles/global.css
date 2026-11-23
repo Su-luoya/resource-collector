@@ -249,6 +249,34 @@ a {
   opacity: 0.8;
 }
 
+/* 分区导航：视觉上沿用 chip，但语义是链接（aria-current 而不是 aria-pressed） */
+.section-nav {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 11px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.section-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.section-chip.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  font-weight: 550;
+}
+
+.page-hint {
+  padding-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+
 /* ---------- main ---------- */
 main {
   padding: 26px 0 64px;

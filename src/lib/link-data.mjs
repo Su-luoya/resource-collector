@@ -8,9 +8,9 @@
 // 否则 `node scripts/validate.mjs` 会挂。
 import { parse } from 'yaml';
 
-export const FIELDS = ['title', 'url', 'type', 'topics', 'desc', 'added'];
+export const FIELDS = ['title', 'url', 'section', 'facets', 'desc', 'added'];
 
-/** 双引号标量：与仓库现有写法一致（title/desc 带引号，url/type/added 不带） */
+/** 双引号标量：与仓库现有写法一致（title/desc 带引号，url/section/added 不带） */
 const q = (value) =>
   '"' +
   String(value)
@@ -40,23 +40,37 @@ export const hostKey = (input) => {
 /** 块状 plain 标量里只有空白和「: 」会被误读；其余原样输出，保持与现有文件逐字节一致 */
 const plain = (value) => (/\s|: /.test(value) || /^[-?:,[\]{}#&*!|>'"%@`]/.test(value) ? q(value) : value);
 
+/** 单值写成 `code`，多值写成 `[r, python]`；facet 取值都是小写 id，不需要引号 */
+const inline = (value) => (Array.isArray(value) ? `[${value.join(', ')}]` : String(value));
+
+const dumpFacets = (facets) =>
+  Object.entries(facets ?? {}).map(
+    ([section, values]) =>
+      `    ${section}: { ${Object.entries(values)
+        .map(([id, value]) => `${id}: ${inline(value)}`)
+        .join(', ')} }`,
+  );
+
 const dumpOne = (r) =>
-  `- title: ${q(r.title)}\n` +
-  `  url: ${plain(r.url)}\n` +
-  `  type: ${r.type}\n` +
-  `  topics: [${(r.topics ?? []).join(', ')}]\n` +
-  `  desc: ${q(r.desc)}\n` +
-  `  added: ${r.added}\n`;
+  [
+    `- title: ${q(r.title)}`,
+    `  url: ${plain(r.url)}`,
+    `  section: [${(r.section ?? []).join(', ')}]`,
+    '  facets:',
+    ...dumpFacets(r.facets),
+    `  desc: ${q(r.desc)}`,
+    `  added: ${r.added}`,
+  ].join('\n') + '\n';
 
 export const parseLinks = (raw) => {
   const parsed = parse(raw);
   const rows = Array.isArray(parsed) ? parsed : (parsed?.links ?? []);
-  return rows.map((r) => ({ ...r, topics: r.topics ?? [] }));
+  return rows;
 };
 
 /**
  * 全表重排。头部注释原样保留（取到第一条 `- title:` 之前），
- * 其余每条按固定模板输出——对现有 99 条是逐字节复现，所以改一条只有一条的 diff。
+ * 其余每条按固定模板输出——对现有数据是逐字节复现，所以改一条只有一条的 diff。
  */
 export const dumpLinks = (rows, raw) => {
   const at = raw.indexOf('- title:');
@@ -73,12 +87,17 @@ const isParseable = (value) => {
   }
 };
 
+const idOk = (value) => typeof value === 'string' && /^[a-z0-9-]+$/.test(value);
+
 /**
+ * links.yaml 的行校验。
+ * section 是对外概念（决定进哪几页），facets 按分区嵌套（同名的 kind 轴在不同页面互不干扰）。
  * @returns {{errors: string[], warns: string[]}}
  */
 export const validateRows = (rows, taxonomy, today = new Date().toISOString().slice(0, 10)) => {
-  const typeIds = new Set(taxonomy.types.map((t) => t.id));
-  const topicIds = new Set(taxonomy.topics.map((t) => t.id));
+  const sections = taxonomy.sections ?? [];
+  const byId = new Map(sections.map((s) => [s.id, s]));
+  const sectionList = [...byId.keys()].join(', ');
   const errors = [];
   const warns = [];
   const err = (m) => errors.push(m);
@@ -99,6 +118,11 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
     if (typeof l.title === 'string' && l.title.length > 80) err(`${at}.title 超过 80 字`);
     if (typeof l.desc === 'string' && l.desc.length > 120) err(`${at}.desc 超过 120 字（卡片会截断）`);
 
+    // 旧字段：分面模型换过一次，留着会让人以为还在用
+    for (const old of ['type', 'topics']) {
+      if (old in l) err(`${at}.${old} 已废弃，改用 section + facets`);
+    }
+
     if (typeof l.url === 'string') {
       if (!/^https?:\/\//.test(l.url)) err(`${at}.url 必须以 http(s):// 开头：${l.url}`);
       else if (/\s/.test(l.url)) err(`${at}.url 含空白字符：${JSON.stringify(l.url)}`);
@@ -109,17 +133,61 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
       else seen.set(l.url, i);
     }
 
-    if (typeof l.type !== 'string' || !l.type.trim()) err(`${at}.type 缺失（必须是 taxonomy.json 里的一个类型 id）`);
-    else if (!typeIds.has(l.type)) err(`${at}.type 未登记：${l.type}（可选：${[...typeIds].join(', ')}）`);
+    const picked = new Set();
+    if (!Array.isArray(l.section) || l.section.length === 0) {
+      err(`${at}.section 必须是非空数组（可多值，如 [data, packages]）`);
+    } else {
+      for (const id of l.section) {
+        if (!idOk(id)) err(`${at}.section 含非法取值：${JSON.stringify(id)}`);
+        else if (!byId.has(id)) err(`${at}.section 未登记：${id}（可选：${sectionList}）`);
+        else if (picked.has(id)) err(`${at}.section 重复：${id}`);
+        else picked.add(id);
+      }
+    }
 
-    if (!Array.isArray(l.topics)) err(`${at}.topics 必须是数组（可为空，但字段要写）`);
-    else {
-      const seenTopic = new Set();
-      for (const t of l.topics) {
-        if (typeof t !== 'string' || !/^[a-z0-9-]+$/.test(t)) err(`${at}.topics 含非法取值：${JSON.stringify(t)}`);
-        else if (!topicIds.has(t)) err(`${at}.topics 未登记：${t}（可选：${[...topicIds].join(', ')}）`);
-        else if (seenTopic.has(t)) err(`${at}.topics 重复：${t}`);
-        else seenTopic.add(t);
+    if (!l.facets || typeof l.facets !== 'object' || Array.isArray(l.facets)) {
+      err(`${at}.facets 必须是对象，键为分区 id`);
+      return;
+    }
+
+    for (const key of Object.keys(l.facets)) {
+      if (!picked.has(key)) err(`${at}.facets.${key} 不在 section 里（先把它加进 section）`);
+    }
+
+    for (const sid of picked) {
+      const def = byId.get(sid);
+      if (!def) continue; // 未登记的分区已经报过
+      const got = l.facets[sid];
+      if (!got || typeof got !== 'object' || Array.isArray(got)) {
+        err(`${at}.facets.${sid} 缺失（每个 section 都要写它自己的分类）`);
+        continue;
+      }
+
+      const facetIds = new Set((def.facets ?? []).map((f) => f.id));
+      for (const fid of Object.keys(got)) {
+        if (!facetIds.has(fid)) {
+          err(`${at}.facets.${sid}.${fid} 不在该分区词表里（可选：${[...facetIds].join(', ')}）`);
+        }
+      }
+
+      for (const facet of def.facets ?? []) {
+        const value = got[facet.id];
+        if (value === undefined) {
+          err(`${at}.facets.${sid}.${facet.id} 缺失（可选：${facet.values.map((v) => v.id).join(', ')}）`);
+          continue;
+        }
+        const allowed = new Set(facet.values.map((v) => v.id));
+        const list = Array.isArray(value) ? value : [value];
+        if (facet.multi && !Array.isArray(value)) err(`${at}.facets.${sid}.${facet.id} 可多选，必须写成数组`);
+        if (!facet.multi && Array.isArray(value)) err(`${at}.facets.${sid}.${facet.id} 单选，不能写成数组`);
+        const used = new Set();
+        for (const v of list) {
+          if (!idOk(v)) err(`${at}.facets.${sid}.${facet.id} 含非法取值：${JSON.stringify(v)}`);
+          else if (!allowed.has(v)) {
+            err(`${at}.facets.${sid}.${facet.id} 未登记：${v}（可选：${[...allowed].join(', ')}）`);
+          } else if (used.has(v)) err(`${at}.facets.${sid}.${facet.id} 重复：${v}`);
+          else used.add(v);
+        }
       }
     }
 

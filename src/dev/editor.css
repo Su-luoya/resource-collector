@@ -134,7 +134,9 @@
   gap: 12px;
 }
 
-.dev-topics {
+.dev-topics,
+.dev-sections,
+.dev-facet {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 6px 10px 10px;
@@ -145,7 +147,9 @@
   margin: 0;
 }
 
-.dev-topics legend {
+.dev-topics legend,
+.dev-sections legend,
+.dev-facet legend {
   padding: 0 4px;
   color: var(--fg-muted);
   font-size: 12px;
@@ -223,4 +227,27 @@
 .dev-card-actions button.del:hover {
   color: var(--fail);
   border-color: var(--fail);
+}
+
+/* 分区面板：勾了哪个分区就显示哪一块分类 */
+.dev-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+}
+
+.dev-panel[hidden] {
+  display: none;
+}
+
+.dev-panel-title {
+  font-size: 12px;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+}
+
+.dev-panel .dev-field {
+  max-width: 260px;
 }

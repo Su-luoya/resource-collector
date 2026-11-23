@@ -1,6 +1,15 @@
 ---
 import '../styles/global.css';
 import { base } from '../lib/site';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = '资源库',
+  description = '个人网络资源库：经济金融、Python、机器学习、论文写作与 AI 工具的链接索引。',
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -8,8 +17,8 @@ import { base } from '../lib/site';
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>资源库</title>
-    <meta name="description" content="个人网络资源库：经济金融、Python、机器学习、论文写作与 AI 工具的链接索引。" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
     <link rel="alternate" type="application/rss+xml" title="资源库 · 最近新增" href={`${base}rss.xml`} />
     <script is:inline>

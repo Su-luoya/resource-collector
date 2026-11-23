@@ -17,7 +17,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const url = $<HTMLInputElement>('f-url');
   const title = $<HTMLInputElement>('f-title');
   const desc = $<HTMLTextAreaElement>('f-desc');
-  const type = $<HTMLSelectElement>('f-type');
   const added = $<HTMLInputElement>('f-added');
   const fetchBtn = $<HTMLButtonElement>('f-fetch');
   const fetchMsg = $<HTMLSpanElement>('f-fetch-msg');
@@ -29,7 +28,9 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const addBtn = $<HTMLButtonElement>('dev-add');
   const publishBtn = $<HTMLButtonElement>('dev-publish');
   const stateEl = $<HTMLSpanElement>('dev-state');
-  const topics = Array.from(dlg.querySelectorAll<HTMLInputElement>('input[data-topic]'));
+  const sectionBoxes = Array.from(dlg.querySelectorAll<HTMLInputElement>('input[data-section]'));
+  const panels = Array.from(dlg.querySelectorAll<HTMLElement>('[data-panel]'));
+  const pageSection = host.dataset.section || '';
 
   let editing: string | null = null;
 
@@ -78,15 +79,61 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   // ---- 卡片上的编辑/删除按钮 ----
   const rowOf = (card: Element): Row => {
     const el = card as HTMLElement;
+    let facets: Row['facets'] = {};
+    try {
+      facets = JSON.parse(el.dataset.facets || '{}') as Row['facets'];
+    } catch {
+      facets = {};
+    }
     return {
       title: card.querySelector('h2')?.textContent?.trim() ?? '',
       url: card.getAttribute('href') ?? '',
-      type: el.dataset.type ?? '',
-      topics: (el.dataset.topics ?? '').split(' ').filter(Boolean),
+      section: (el.dataset.section ?? '').split(' ').filter(Boolean),
+      facets,
       desc: card.querySelector('.desc')?.textContent?.trim() ?? '',
       added: el.dataset.added ?? '',
     };
   };
+
+  /** 只显示已勾选分区的分类面板；没勾的分区不参与提交 */
+  function syncPanels() {
+    const picked = new Set(sectionBoxes.filter((box) => box.checked).map((box) => box.value));
+    for (const panel of panels) panel.hidden = !picked.has(panel.dataset.panel || '');
+  }
+
+  /** 表单 → facets：多选轴收集成数组（一个没勾就是 []），单选轴取 select 的值 */
+  function collectFacets(): Row['facets'] {
+    const out: Row['facets'] = {};
+    for (const box of sectionBoxes) {
+      if (!box.checked) continue;
+      const panel = dlg.querySelector<HTMLElement>(`[data-panel="${box.value}"]`);
+      if (!panel) continue;
+      const values: Record<string, string | string[]> = {};
+      for (const input of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-facet-id]')) {
+        const fid = input.dataset.facetId || '';
+        if (input instanceof HTMLSelectElement) values[fid] = input.value;
+        else if (input.checked) {
+          const list = (values[fid] as string[]) ?? [];
+          list.push(input.value);
+          values[fid] = list;
+        } else if (!values[fid]) values[fid] = [];
+      }
+      out[box.value] = values;
+    }
+    return out;
+  }
+
+  function fillFacets(row: Row | null) {
+    for (const panel of panels) {
+      const sid = panel.dataset.panel || '';
+      const vals = row?.facets?.[sid] ?? {};
+      for (const input of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-facet-id]')) {
+        const value = vals[input.dataset.facetId || ''];
+        if (input instanceof HTMLSelectElement) input.value = typeof value === 'string' ? value : '';
+        else input.checked = Array.isArray(value) ? value.includes(input.value) : value === input.value;
+      }
+    }
+  }
 
   for (const card of Array.from(document.querySelectorAll('.card'))) {
     const el = card as HTMLElement;
@@ -131,9 +178,11 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     url.readOnly = Boolean(row);
     title.value = row?.title ?? '';
     desc.value = row?.desc ?? '';
-    type.value = row?.type ?? 'code';
     added.value = row?.added ?? today();
-    for (const box of topics) box.checked = (row?.topics ?? []).includes(box.value);
+    const picked = row?.section ?? (pageSection ? [pageSection] : []);
+    for (const box of sectionBoxes) box.checked = picked.includes(box.value);
+    fillFacets(row);
+    syncPanels();
     deleteBtn.hidden = !row;
     fetchMsg.textContent = '';
     fail('');
@@ -187,9 +236,9 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       url: url.value.trim(),
       title: title.value,
       desc: desc.value,
-      type: type.value,
       added: added.value,
-      topics: topics.filter((box) => box.checked).map((box) => box.value),
+      section: sectionBoxes.filter((box) => box.checked).map((box) => box.value),
+      facets: collectFacets(),
     };
     if (!payload.url) return fail('URL 不能为空');
     saveBtn.disabled = true;
@@ -222,6 +271,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   });
 
   addBtn.addEventListener('click', () => open(null));
+  for (const box of sectionBoxes) box.addEventListener('change', syncPanels);
 
   // ---- 发布 ----
   publishBtn.addEventListener('click', async () => {

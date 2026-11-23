@@ -1,11 +1,9 @@
-// 首页交互：搜索 / 分面筛选 / 键盘导航 / 主题切换。全部原生实现，没有框架。
+// 页面交互：搜索 / 分面筛选 / 键盘导航 / 主题切换。全部原生实现，没有框架。
 //
-// 从 src/pages/index.astro 里挪出来的原因：markup 归 markup，行为归行为；
-// 这个文件能单独读、单独测（DOM 依赖集中在 selectors 一段）。
+// 首页与分区页共用这一段：轴不再写死，全部从 chip 的 `data-facet` 读出来，
+// 卡片上用 `data-facet-<轴>= "值 值"` 记录自己的取值（由 src/components/Catalog.astro 生成）。
 //
 // 编辑层只在 dev 存在：`import.meta.env.DEV` 在构建时是常量 false，动态 import 整块被摇掉。
-
-type Axis = 'type' | 'topic';
 
 const cards = Array.from(document.querySelectorAll<HTMLAnchorElement>('.card'));
 const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip[data-facet]'));
@@ -16,30 +14,32 @@ const clearBtn = document.getElementById('clear') as HTMLButtonElement;
 const empty = document.getElementById('empty') as HTMLElement;
 const themeBtn = document.getElementById('theme') as HTMLButtonElement;
 
-/** 两条轴各一个集合：同轴内取并集（OR），跨轴取交集（AND） */
-const picked: Record<Axis, Set<string>> = { type: new Set<string>(), topic: new Set<string>() };
+/** 轴 = 页面渲染出来的 facet 行；首页只有 section 一条，分区页是该分区的各条轴 */
+const axes = [...new Set(chips.map((chip) => chip.dataset.facet || ''))].filter(Boolean);
+
+/** 每条轴一个集合：同轴内取并集（OR），跨轴取交集（AND） */
+const picked: Record<string, Set<string>> = Object.fromEntries(axes.map((axis) => [axis, new Set<string>()]));
 let query = '';
 let activeIndex = -1;
 
 /** 词表里真实存在的取值，用来忽略过期的 URL hash（改名后的旧链接不该把页面筛空） */
-const known: Record<Axis, Set<string>> = { type: new Set<string>(), topic: new Set<string>() };
-for (const chip of chips) known[chip.dataset.facet as Axis]?.add(chip.dataset.value || '');
+const known: Record<string, Set<string>> = Object.fromEntries(axes.map((axis) => [axis, new Set<string>()]));
+for (const chip of chips) known[chip.dataset.facet || '']?.add(chip.dataset.value || '');
 
-const axisOf = (chip: HTMLButtonElement) => chip.dataset.facet as Axis;
+const valuesOf = (card: HTMLAnchorElement, axis: string) =>
+  (card.getAttribute(`data-facet-${axis}`) || '').split(' ').filter(Boolean);
 
 const visible = () => cards.filter((card) => !card.hidden);
 
 function apply() {
   const q = query.trim().toLowerCase();
-  const { type: ts, topic: ks } = picked;
+  const active = axes.filter((axis) => picked[axis].size > 0);
   let n = 0;
 
   for (const card of cards) {
-    const okType = ts.size === 0 || ts.has(card.dataset.type || '');
-    const topics = (card.dataset.topics || '').split(' ');
-    const okTopic = ks.size === 0 || topics.some((t) => ks.has(t));
+    const okFacets = active.every((axis) => valuesOf(card, axis).some((v) => picked[axis].has(v)));
     const okQuery = !q || (card.dataset.search || '').includes(q);
-    const show = okType && okTopic && okQuery;
+    const show = okFacets && okQuery;
     card.hidden = !show;
     if (show) n++;
   }
@@ -47,22 +47,22 @@ function apply() {
   shown.textContent = String(n);
   empty.hidden = n > 0;
 
-  const filtering = ts.size + ks.size > 0 || q !== '';
+  const filtering = active.length > 0 || q !== '';
   clearBtn.hidden = !filtering;
 
   const notes: string[] = [];
-  if (ts.size > 1 || ks.size > 1) notes.push('同一行内取并集');
-  if (ts.size > 0 && ks.size > 0) notes.push('类型与主题取交集');
+  if (active.some((axis) => picked[axis].size > 1)) notes.push('同一行内取并集');
+  if (active.length > 1) notes.push('不同行取交集');
   hint.textContent = notes.length ? `（${notes.join('，')}）` : '';
 
   for (const chip of chips) {
-    chip.setAttribute('aria-pressed', picked[axisOf(chip)].has(chip.dataset.value || '') ? 'true' : 'false');
+    const axis = chip.dataset.facet || '';
+    chip.setAttribute('aria-pressed', picked[axis]?.has(chip.dataset.value || '') ? 'true' : 'false');
   }
 
   // 筛选状态写进 hash：刷新、分享、前进后退都能还原
   const params = new URLSearchParams();
-  if (ts.size) params.set('type', [...ts].join(','));
-  if (ks.size) params.set('topic', [...ks].join(','));
+  for (const axis of axes) if (picked[axis].size) params.set(axis, [...picked[axis]].join(','));
   if (q) params.set('q', query.trim());
   const frag = params.toString();
   history.replaceState(null, '', frag ? `#${frag}` : location.pathname + location.search);
@@ -73,19 +73,18 @@ function apply() {
 
 function readHash() {
   const params = new URLSearchParams(location.hash.slice(1));
-  const read = (axis: Axis) =>
-    new Set((params.get(axis) || '').split(',').filter((id) => id && known[axis].has(id)));
-
-  picked.type = read('type');
-  picked.topic = read('topic');
+  for (const axis of axes) {
+    picked[axis] = new Set(
+      (params.get(axis) || '').split(',').filter((id) => id && known[axis].has(id)),
+    );
+  }
   query = params.get('q') || '';
   qInput.value = query;
   apply();
 }
 
 function reset() {
-  picked.type.clear();
-  picked.topic.clear();
+  for (const axis of axes) picked[axis].clear();
   query = '';
   qInput.value = '';
   apply();
@@ -93,8 +92,9 @@ function reset() {
 
 for (const chip of chips) {
   chip.addEventListener('click', () => {
-    const axis = axisOf(chip);
+    const axis = chip.dataset.facet || '';
     const value = chip.dataset.value || '';
+    if (!axes.includes(axis)) return;
     if (picked[axis].has(value)) picked[axis].delete(value);
     else picked[axis].add(value);
     apply();

@@ -1,242 +1,33 @@
 ---
-import Base from '../layouts/Base.astro';
-import { base } from '../lib/site';
-import {
-  links,
-  typeFacets,
-  topicFacets,
-  hostOf,
-  lastUpdated,
-  statusOf,
-  searchText,
-  unknownFacets,
-  iconFor,
-  TYPE_LABEL,
-  TOPIC_LABEL,
-  TYPES,
-  TOPICS,
-} from '../lib/links';
+import Catalog from '../components/Catalog.astro';
+import { SECTIONS, navItems, sectionCount, unknownFacets, links, lastUpdated } from '../lib/links';
 
 const bad = unknownFacets(links);
-if (bad.types.length || bad.topics.length) {
-  throw new Error(
-    `links.yaml 里出现 taxonomy.json 未登记的取值：type=${bad.types.join(', ') || '无'}；topics=${bad.topics.join(', ') || '无'}`,
-  );
+if (bad.length) {
+  throw new Error(`links.yaml 里出现 taxonomy.json 未登记的取值：${bad.slice(0, 8).join('；')}`);
 }
 
-/** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉 */
-const DEV = import.meta.env.DEV;
-
-const total = links.length;
-const jsonHref = `${base}links.json`;
-const rssHref = `${base}rss.xml`;
+const facetRows = [
+  {
+    id: 'section',
+    label: '分区',
+    hint: '一条资源可以同时进几个分区',
+    values: SECTIONS.map((s) => ({
+      id: s.id,
+      label: s.label,
+      count: sectionCount(s.id),
+      hint: s.hint,
+    })),
+  },
+];
 ---
 
-<Base>
-  <header class="site-header">
-    <div class="wrap header-inner">
-      <div class="brand">
-        <h1>资源库</h1>
-        <span class="meta">
-          {total} 条 · {TYPES.length} 类资源 · {TOPICS.length} 个主题 · 最近更新 {lastUpdated}
-        </span>
-      </div>
-
-      <div class="search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <circle cx="11" cy="11" r="7"></circle>
-          <path d="M20 20l-3.5-3.5"></path>
-        </svg>
-        <input
-          id="q"
-          type="search"
-          placeholder="搜索标题、简介、类型、主题、域名…"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="搜索资源"
-        />
-        <kbd>/</kbd>
-      </div>
-
-      <button class="icon-btn" id="theme" type="button" title="切换深浅色" aria-label="切换深浅色">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"></path>
-        </svg>
-      </button>
-    </div>
-
-    <div class="wrap facets">
-      <div class="facet-row" role="group" aria-label="按资源类型筛选">
-        <span class="facet-name">类型</span>
-        {
-          typeFacets.map((t) => (
-            <button class="chip" type="button" data-facet="type" data-value={t.id} aria-pressed="false" title={t.hint}>
-              {t.label}
-              <span class="n">{t.count}</span>
-            </button>
-          ))
-        }
-      </div>
-
-      <div class="facet-row" role="group" aria-label="按主题筛选">
-        <span class="facet-name">主题</span>
-        {
-          topicFacets.map((t) => (
-            <button class="chip" type="button" data-facet="topic" data-value={t.id} aria-pressed="false" title={t.hint}>
-              {t.label}
-              <span class="n">{t.count}</span>
-            </button>
-          ))
-        }
-      </div>
-    </div>
-  </header>
-
-  <main class="wrap">
-    <div class="toolbar">
-      <span>显示 <strong id="shown">{total}</strong> / {total} 条</span>
-      <span id="hint"></span>
-      <button class="clear-btn" id="clear" type="button" hidden>清除筛选</button>
-    </div>
-
-    <div class="grid" id="grid">
-      {
-        links.map((l) => {
-          const st = statusOf(l.url);
-          const host = hostOf(l.url);
-          const initial = (host.match(/[a-z0-9]/i)?.[0] ?? '·').toUpperCase();
-          const icon = iconFor(host);
-          const linkBad = st && (st.status === 'fail' || st.status === 'warn');
-          const badge = st?.status === 'fail' ? '链接可能失效' : '链接待确认';
-          return (
-            <a
-              class="card"
-              href={l.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-type={l.type}
-              data-topics={l.topics.join(' ')}
-              data-search={searchText(l)}
-              data-added={l.added}
-            >
-              <span class="card-top">
-                <span class="fav">
-                  {icon ? (
-                    <img src={`${base}${icon}`} alt="" loading="lazy" decoding="async" />
-                  ) : (
-                    <span class="initial">{initial}</span>
-                  )}
-                </span>
-                <h2>{l.title}</h2>
-              </span>
-              <p class="desc">{l.desc}</p>
-              <span class="card-bottom">
-                <span class="type-badge">{TYPE_LABEL[l.type] ?? l.type}</span>
-                <span class="mini-tags">
-                  {l.topics.map((t) => (
-                    <span class="mini-tag">{TOPIC_LABEL[t] ?? t}</span>
-                  ))}
-                </span>
-                {linkBad && (
-                  <span class={st!.status === 'fail' ? 'badge-fail' : 'badge-warn'} title={`最近检查：${st!.checked}`}>
-                    {badge}
-                  </span>
-                )}
-              </span>
-              <span class="host">{host}</span>
-            </a>
-          );
-        })
-      }
-    </div>
-
-    <p class="empty" id="empty" hidden>没有匹配的资源，试试别的关键词，或去掉一两项筛选。</p>
-
-    <footer>
-      <span>数据源：<a href="https://github.com/Su-luoya/resource-collector">Su-luoya/resource-collector</a> 仓库内的 <code>src/data/links.yaml</code></span>
-      <span><a href={jsonHref}>links.json</a></span>
-      <span><a href={rssHref}>RSS</a></span>
-    </footer>
-  </main>
-
-  {
-    DEV && (
-      <Fragment>
-        <div id="dev" data-base={base}>
-          <span class="dev-tag">编辑模式</span>
-          <button type="button" id="dev-add">＋ 新增</button>
-          <button type="button" id="dev-publish">发布</button>
-          <span id="dev-state"></span>
-        </div>
-
-        <dialog id="dev-dialog">
-          <form id="dev-form">
-            <h3 id="dev-heading">新增资源</h3>
-
-            <label class="dev-field">
-              <span>URL</span>
-              <input id="f-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… 或 docs.example.com" />
-            </label>
-
-            <div class="dev-fetch">
-              <button type="button" id="f-fetch">自动抓取标题与简介</button>
-              <span id="f-fetch-msg"></span>
-            </div>
-
-            <label class="dev-field">
-              <span>标题 <em>≤80 字</em></span>
-              <input id="f-title" maxlength="80" />
-            </label>
-
-            <label class="dev-field">
-              <span>简介 <em>≤120 字</em></span>
-              <textarea id="f-desc" rows="3" maxlength="120"></textarea>
-            </label>
-
-            <div class="dev-cols">
-              <label class="dev-field">
-                <span>类型</span>
-                <select id="f-type">
-                  {TYPES.map((t) => (
-                    <option value={t.id} selected={t.id === 'code'}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label class="dev-field">
-                <span>收录日期</span>
-                <input id="f-added" type="date" />
-              </label>
-            </div>
-
-            <fieldset class="dev-topics">
-              <legend>主题（可多选，可空）</legend>
-              {TOPICS.map((t) => (
-                <label>
-                  <input type="checkbox" value={t.id} data-topic />
-                  {t.label}
-                </label>
-              ))}
-            </fieldset>
-
-            <p class="dev-err" id="f-err" hidden></p>
-
-            <div class="dev-actions">
-              <button type="button" class="del" id="f-delete" hidden>
-                删除
-              </button>
-              <button type="button" id="f-cancel">取消</button>
-              <button type="button" class="primary" id="f-save">保存</button>
-            </div>
-          </form>
-        </dialog>
-      </Fragment>
-    )
-  }
-
-  <script>
-    import '../client/filter';
-  </script>
-</Base>
+<Catalog
+  heading="资源库"
+  meta={`${links.length} 条 · ${SECTIONS.length} 个分区 · 最近更新 ${lastUpdated}`}
+  placeholder="搜索标题、简介、分类、域名…"
+  nav={navItems()}
+  facetRows={facetRows}
+  cards={links.map((link) => ({ link }))}
+  total={links.length}
+/>
