@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 数据校验：新增/修改 links.yaml 后跑 `npm run check`。
-// 只做结构与去重校验；标签白名单由 Astro 构建期检查（见 src/lib/links.ts）。
+// 校验结构、去重、以及 type/topics 是否落在 taxonomy.json 的白名单内。
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -8,6 +8,9 @@ import { parse } from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const file = resolve(root, 'src/data/links.yaml');
+const taxonomy = JSON.parse(readFileSync(resolve(root, 'src/data/taxonomy.json'), 'utf8'));
+const typeIds = new Set(taxonomy.types.map((t) => t.id));
+const topicIds = new Set(taxonomy.topics.map((t) => t.id));
 const parsed = parse(readFileSync(file, 'utf8'));
 const rows = Array.isArray(parsed) ? parsed : parsed?.links;
 
@@ -37,11 +40,19 @@ if (!errors.length) {
       else seen.set(l.url, i);
     }
 
-    if (!Array.isArray(l.tags) || l.tags.length === 0) err(`${at}.tags 必须是非空数组`);
-    else
-      for (const t of l.tags) {
-        if (typeof t !== 'string' || !/^[a-z0-9-]+$/.test(t)) err(`${at}.tags 含非法标签：${JSON.stringify(t)}`);
+    if (typeof l.type !== 'string' || !l.type.trim()) err(`${at}.type 缺失（必须是 taxonomy.json 里的一个类型 id）`);
+    else if (!typeIds.has(l.type)) err(`${at}.type 未登记：${l.type}（可选：${[...typeIds].join(', ')}）`);
+
+    if (!Array.isArray(l.topics)) err(`${at}.topics 必须是数组（可为空，但字段要写）`);
+    else {
+      const seenTopic = new Set();
+      for (const t of l.topics) {
+        if (typeof t !== 'string' || !/^[a-z0-9-]+$/.test(t)) err(`${at}.topics 含非法取值：${JSON.stringify(t)}`);
+        else if (!topicIds.has(t)) err(`${at}.topics 未登记：${t}（可选：${[...topicIds].join(', ')}）`);
+        else if (seenTopic.has(t)) err(`${at}.topics 重复：${t}`);
+        else seenTopic.add(t);
       }
+    }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(l.added ?? ''))) err(`${at}.added 必须是 YYYY-MM-DD`);
     else if (String(l.added) > today) warn.push(`${at}.added 是未来日期：${l.added}`);

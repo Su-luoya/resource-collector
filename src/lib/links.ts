@@ -1,12 +1,19 @@
 import raw from '../data/links.yaml?raw';
 import statusRaw from '../data/link-status.json?raw';
 import iconsJson from '../data/icons.json';
+import taxonomy from '../data/taxonomy.json';
 import { parse } from 'yaml';
+
+export type TypeId = keyof typeof TYPE_LABEL;
+export type TopicId = string;
 
 export type Resource = {
   title: string;
   url: string;
-  tags: string[];
+  /** 资源形态，单选：一条资源只属于一个类型轴取值 */
+  type: string;
+  /** 主题，可多选：一条资源可以同时讲计量与 Python */
+  topics: string[];
   desc: string;
   added: string;
 };
@@ -18,26 +25,27 @@ export type LinkStatus = {
   checked: string;
 };
 
-export const TAGS = [
-  { id: 'econ', label: '经济金融', hint: '学者主页、期刊、工作论文、机构' },
-  { id: 'method', label: '研究方法', hint: '计量与实证方法、讲义、在线书、工作流' },
-  { id: 'search', label: '学术检索', hint: '文献数据库与学术搜索引擎' },
-  { id: 'data', label: '数据源', hint: '数据集、数据库入口与文本数据' },
-  { id: 'python', label: 'Python', hint: 'Python 包、库与文档' },
-  { id: 'ml', label: '机器学习', hint: '深度学习、强化学习、科学计算' },
-  { id: 'latex', label: '论文写作', hint: 'LaTeX、参考文献、写作工具' },
-  { id: 'quant', label: '量化计算', hint: '定量金融与计算经济学' },
-  { id: 'ai', label: 'AI 工具', hint: 'AI 产品、Agent 技能、提示与模型服务' },
-  { id: 'service', label: '平台服务', hint: '付费/账号类服务的官网首页' },
-  { id: 'read', label: '阅读资讯', hint: '博客、通讯、资讯与评测' },
-] as const;
+type Facet = { id: string; label: string; hint: string };
 
-export const TAG_LABEL = new Map(TAGS.map((t) => [t.id, t.label]));
+/** 分面分类的两条轴：type（是什么）与 topic（讲什么），定义见 src/data/taxonomy.json */
+export const TYPES = taxonomy.types as Facet[];
+export const TOPICS = taxonomy.topics as Facet[];
 
-/** 数据里出现但 TAGS 未登记的标签（构建时会报错，防止手滑写错标签） */
-export const unknownTags = (rows: Resource[]): string[] => {
-  const known = new Set(TAGS.map((t) => t.id));
-  return [...new Set(rows.flatMap((r) => r.tags))].filter((t) => !known.has(t));
+export const TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  TYPES.map((t) => [t.id, t.label]),
+);
+export const TOPIC_LABEL: Record<string, string> = Object.fromEntries(
+  TOPICS.map((t) => [t.id, t.label]),
+);
+
+/** 数据里出现但 taxonomy.json 未登记的取值（构建时由 scripts/validate.mjs 拦截） */
+export const unknownFacets = (rows: Resource[]) => {
+  const types = new Set(TYPES.map((t) => t.id));
+  const topics = new Set(TOPICS.map((t) => t.id));
+  return {
+    types: [...new Set(rows.map((r) => r.type))].filter((t) => !types.has(t)),
+    topics: [...new Set(rows.flatMap((r) => r.topics ?? []))].filter((t) => !topics.has(t)),
+  };
 };
 
 let statuses: Record<string, LinkStatus> = {};
@@ -47,14 +55,23 @@ try {
   statuses = {};
 }
 
-export const links: Resource[] = (parse(raw) as Resource[]).sort((a, b) => {
-  if (a.added !== b.added) return a.added < b.added ? 1 : -1;
-  return a.title.localeCompare(b.title, 'zh-Hans-CN');
-});
+export const links: Resource[] = (parse(raw) as Resource[])
+  .map((r) => ({ ...r, topics: r.topics ?? [] }))
+  .sort((a, b) => {
+    if (a.added !== b.added) return a.added < b.added ? 1 : -1;
+    return a.title.localeCompare(b.title, 'zh-Hans-CN');
+  });
 
-export const allTags = TAGS.map((t) => ({
+export type FacetWithCount = Facet & { count: number };
+
+export const typeFacets: FacetWithCount[] = TYPES.map((t) => ({
   ...t,
-  count: links.filter((l) => l.tags.includes(t.id)).length,
+  count: links.filter((l) => l.type === t.id).length,
+}));
+
+export const topicFacets: FacetWithCount[] = TOPICS.map((t) => ({
+  ...t,
+  count: links.filter((l) => l.topics.includes(t.id)).length,
 }));
 
 /** 本地图标表：host → public 下的相对路径（scripts/fetch-icons.mjs 生成） */
@@ -71,8 +88,17 @@ export const hostOf = (url: string): string => {
   }
 };
 
-/** 供搜索与 JSON 导出复用的可搜索文本 */
+/** 供搜索与 JSON 导出复用：搜索会命中类型名与主题名，输入「学者」也能筛到 */
 export const searchText = (l: Resource): string =>
-  [l.title, l.desc, l.tags.join(' '), hostOf(l.url)].join(' ').toLowerCase();
+  [
+    l.title,
+    l.desc,
+    TYPE_LABEL[l.type] ?? l.type,
+    l.topics.map((t) => TOPIC_LABEL[t] ?? t).join(' '),
+    l.topics.join(' '),
+    hostOf(l.url),
+  ]
+    .join(' ')
+    .toLowerCase();
 
 export const lastUpdated = links.reduce((m, l) => (l.added > m ? l.added : m), '');

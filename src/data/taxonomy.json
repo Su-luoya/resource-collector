@@ -1,0 +1,23 @@
+{
+  "types": [
+    { "id": "scholar", "label": "学者主页", "hint": "个人/机构主页、作者站点、研究者的资源页" },
+    { "id": "paper", "label": "论文与预印本", "hint": "工作论文列表、期刊聚合、文献合集" },
+    { "id": "search", "label": "检索入口", "hint": "文献库、学术搜索引擎、知识图谱" },
+    { "id": "data", "label": "数据与模型", "hint": "数据集、数据库入口、指数、预训练模型" },
+    { "id": "code", "label": "软件包与工具", "hint": "库、包的官方站与仓库，可安装可运行" },
+    { "id": "doc", "label": "文档与教程", "hint": "教程、在线书、讲义、速查手册" },
+    { "id": "blog", "label": "博客与通讯", "hint": "个人博客、Substack 通讯、专栏" },
+    { "id": "dir", "label": "目录与市场", "hint": "导航站、技能市场、评测与比价聚合" },
+    { "id": "tool", "label": "在线小工具", "hint": "免注册即用的单页工具" },
+    { "id": "service", "label": "平台服务", "hint": "需要账号或付费的在线平台" }
+  ],
+  "topics": [
+    { "id": "econ", "label": "经济金融", "hint": "资产定价、宏观、公司金融、会计实证" },
+    { "id": "metrics", "label": "计量方法", "hint": "因果推断、DiD、面板、实证工作流" },
+    { "id": "ml", "label": "机器学习", "hint": "深度学习、强化学习、科学计算与 PDE" },
+    { "id": "quant", "label": "定量金融", "hint": "衍生品定价、数值解、计算经济学" },
+    { "id": "py", "label": "Python", "hint": "Python 生态、包与环境、数据处理" },
+    { "id": "writing", "label": "论文写作", "hint": "LaTeX、BibTeX、排版与投稿流程" },
+    { "id": "ai", "label": "AI 与 Agent", "hint": "大模型产品、Agent 技能、提示与推理服务" }
+  ]
+}

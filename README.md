@@ -3,7 +3,7 @@
 个人网络资源（书签）仓库 + 静态展示站，部署在 GitHub Pages。
 
 - 数据：`src/data/links.yaml`（唯一需要手改的文件）
-- 站点：Astro 静态构建，零客户端框架，搜索/标签筛选/深色模式/键盘导航全部原生实现
+- 站点：Astro 静态构建，零客户端框架，分面筛选（类型 × 主题）/深色模式/键盘导航全部原生实现
 - 输出：`/`（列表页）、`/links.json`（原始数据 API）、`/rss.xml`（最新 40 条）
 
 ## 加一条资源
@@ -13,8 +13,9 @@
 ```yaml
 - title: JAX
   url: https://docs.jax.dev/
+  type: code
+  topics: [py, ml]
   desc: Google 的函数式数组计算与自动微分库，CPU/GPU/TPU 通用。
-  tags: [python, ml]
   added: 2026-02-20
 ```
 
@@ -22,34 +23,50 @@
 | --- | --- | --- |
 | `title` | ✓ | 卡片标题，≤ 80 字 |
 | `url` | ✓ | `https://` 开头，不能与已有链接重复 |
+| `type` | ✓ | 资源形态，**单选**，取值见下表 A |
+| `topics` | ✓ | 主题，**可多选也可以为 `[]`**，取值见下表 B |
 | `desc` | ✓ | 一句话说明，≤ 120 字（超了卡片会截断） |
-| `tags` | ✓ | 1 个或多个，取值见下表 |
 | `added` | ✓ | `YYYY-MM-DD`，列表按它倒序排 |
 
-**标签白名单**（定义在 `src/lib/links.ts` 的 `TAGS`，新增标签要先在那里登记，否则构建报错）：
+分类采用**分面分类（faceted taxonomy）**：一条轴回答「这是什么」，另一条回答「讲什么」，两条轴各自独立取值、各自筛选。页面顶部两行 chips 就是这两条轴——同一行内多选取并集，跨行取交集。词表定义在 `src/data/taxonomy.json`（唯一事实源），Astro 构建与 `npm run check` 都会校验，写错取值直接报错。
+
+**A. 类型轴 `type`（单选，10 类）**
 
 | id | 显示名 | 范围 |
 | --- | --- | --- |
-| `econ` | 经济金融 | 学者主页、期刊、工作论文、机构 |
-| `method` | 研究方法 | 计量与实证方法、讲义、在线书、工作流 |
-| `search` | 学术检索 | 文献数据库与学术搜索引擎 |
-| `data` | 数据源 | 数据集、数据库入口与文本数据 |
-| `python` | Python | Python 包、库与文档 |
-| `ml` | 机器学习 | 深度学习、强化学习、科学计算 |
-| `latex` | 论文写作 | LaTeX、参考文献、写作工具 |
-| `quant` | 量化计算 | 定量金融与计算经济学 |
-| `ai` | AI 工具 | AI 产品、Agent 技能、提示与模型服务 |
-| `service` | 平台服务 | 付费/账号类服务的官网首页 |
-| `read` | 阅读资讯 | 博客、通讯、资讯与评测 |
+| `scholar` | 学者主页 | 个人/机构主页、作者站点、研究者的资源页 |
+| `paper` | 论文与预印本 | 工作论文列表、期刊聚合、文献合集 |
+| `search` | 检索入口 | 文献库、学术搜索引擎、知识图谱 |
+| `data` | 数据与模型 | 数据集、数据库入口、指数、预训练模型 |
+| `code` | 软件包与工具 | 库、包的官方站与仓库，可安装可运行 |
+| `doc` | 文档与教程 | 教程、在线书、讲义、速查手册 |
+| `blog` | 博客与通讯 | 个人博客、Substack 通讯、专栏 |
+| `dir` | 目录与市场 | 导航站、技能市场、评测与比价聚合 |
+| `tool` | 在线小工具 | 免注册即用的单页工具 |
+| `service` | 平台服务 | 需要账号或付费的在线平台 |
 
-新增标签：改 `src/lib/links.ts` 的 `TAGS` 数组，否则构建会抛错（防手滑写错标签）。
+判断优先级：**资源的主体是什么**，而不是「页面长得像什么」。一个包的官方文档站仍是 `code`（代表那个包），讲怎么用这个包的教程才是 `doc`。
+
+**B. 主题轴 `topics`（可多选，7 类）**
+
+| id | 显示名 | 范围 |
+| --- | --- | --- |
+| `econ` | 经济金融 | 资产定价、宏观、公司金融、会计实证 |
+| `metrics` | 计量方法 | 因果推断、DiD、面板、实证工作流 |
+| `ml` | 机器学习 | 深度学习、强化学习、科学计算与 PDE |
+| `quant` | 定量金融 | 衍生品定价、数值解、计算经济学 |
+| `py` | Python | Python 生态、包与环境、数据处理 |
+| `writing` | 论文写作 | LaTeX、BibTeX、排版与投稿流程 |
+| `ai` | AI 与 Agent | 大模型产品、Agent 技能、提示与推理服务 |
+
+一两条主题通常就够；主题留空合法（如 Google Scholar 这类通用检索入口）。新增取值：改 `src/data/taxonomy.json` 的 `types` / `topics` 数组（id + label + hint），否则 `npm run check` 与构建都会报错。
 
 ## 命令
 
 ```bash
 npm install
 npm run dev      # 本地预览 http://localhost:4321/resource-collector
-npm run check    # 校验 links.yaml（字段、去重、日期）
+npm run check    # 校验 links.yaml（字段、去重、日期、type/topics 白名单）
 npm run build    # 生成 dist/
 npm run preview  # 预览构建产物
 npm run links    # 手动探测全部链接可用性 → src/data/link-status.json

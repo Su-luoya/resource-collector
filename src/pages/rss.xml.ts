@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { links } from '../lib/links';
+import { links, TYPE_LABEL, TOPIC_LABEL } from '../lib/links';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20,7 +20,8 @@ export const GET: APIRoute = () => {
         `      <guid isPermaLink="false">${esc(l.url)}</guid>`,
         `      <pubDate>${pub}</pubDate>`,
         `      <description>${esc(l.desc)}</description>`,
-        ...l.tags.map((t) => `      <category>${esc(t)}</category>`),
+        ...[TYPE_LABEL[l.type] ?? l.type, ...l.topics.map((t) => TOPIC_LABEL[t] ?? t)]
+          .map((t) => `      <category>${esc(t)}</category>`),
         '    </item>',
       ].join('\n');
     })
