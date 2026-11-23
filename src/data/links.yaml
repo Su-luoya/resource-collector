@@ -675,3 +675,45 @@
   topics: []
   desc: "Ties de Kok 做的网页小工具，按研究项目类型一键生成规范的多级文件夹结构。"
   added: 2026-11-23
+
+- title: "PhDs.io"
+  url: https://phds.io/
+  type: search
+  topics: [econ]
+  desc: "Mingze Gao 自建的文献搜索引擎，主打金融与经济学顶刊，把 JFE、JBF、JCF 等刊的新文章聚在一处方便检索。"
+  added: 2026-11-23
+
+- title: "BRMS（Bank Risk Management Simulation）"
+  url: https://bankrisk.org/
+  type: code
+  topics: [econ]
+  desc: "把银行资产负债表放进利率情景里逐日模拟，看账面价值、监管资本和未实现损失怎么变；可用公开 Call Report 或 SVB 等内置案例。"
+  added: 2026-11-23
+
+- title: "frds"
+  url: https://frds.io/
+  type: code
+  topics: [econ, py]
+  desc: "Financial Research Data Services：Python 库，把文献里的金融风险与微观结构指标直接算出来，如吸收比率、MES/LRMES、PIN、Kyle's lambda。"
+  added: 2026-11-23
+
+- title: "specurve"
+  url: https://github.com/mgao6767/specurve
+  type: code
+  topics: [metrics]
+  desc: "Stata 命令，用一份 YAML 配置批量跑规格曲线分析（Specification Curve），自动汇总上百个回归规格的估计结果并作图。"
+  added: 2026-11-23
+
+- title: "edgar-analyzer"
+  url: https://github.com/mgao6767/edgar-analyzer
+  type: code
+  topics: [econ]
+  desc: "命令行工具：批量下载 SEC EDGAR 上的公司披露文件，先建本地索引数据库，再按事件日期、8-K 条目等条件筛选。"
+  added: 2026-11-23
+
+- title: "mktstructure"
+  url: https://github.com/mgao6767/mktstructure
+  type: code
+  topics: [econ]
+  desc: "命令行工具：从 Refinitiv Tick History 下载逐笔行情，再算买卖价差、价格冲击、方差比等市场微观结构指标。"
+  added: 2026-11-23
