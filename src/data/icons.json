@@ -3,7 +3,7 @@
   "aminer.cn": "icons/aminer.cn.ico",
   "andrewchen.com": "icons/andrewchen.com.ico",
   "autodl.com": "icons/autodl.com.png",
-  "bibtex.eu": "icons/bibtex.eu.svg",
+  "bryankellyacademic.org": "icons/bryankellyacademic.org.ico",
   "chuckfang.finance": "icons/chuckfang.finance.ico",
   "clawhub.ai": "icons/clawhub.ai.ico",
   "cnblogs.com": "icons/cnblogs.com.ico",
@@ -18,6 +18,7 @@
   "hrl.boyuai.com": "icons/hrl.boyuai.com.png",
   "hvoyai.com": "icons/hvoyai.com.ico",
   "jax.readthedocs.io": "icons/jax.readthedocs.io.ico",
+  "jkpfactors.com": "icons/jkpfactors.com.ico",
   "johnmbarrios.com": "icons/johnmbarrios.com.ico",
   "latexstudio.net": "icons/latexstudio.net.ico",
   "mingze-gao.com": "icons/mingze-gao.com.ico",
@@ -35,6 +36,7 @@
   "quantlib-python-docs.readthedocs.io": "icons/quantlib-python-docs.readthedocs.io.ico",
   "quantlib.org": "icons/quantlib.org.ico",
   "sas.upenn.edu": "icons/sas.upenn.edu.ico",
+  "sethpruitt.net": "icons/sethpruitt.net.ico",
   "siliconflow.cn": "icons/siliconflow.cn.ico",
   "skillhub.tencent.com": "icons/skillhub.tencent.com.png",
   "skills.sh": "icons/skills.sh.ico",
@@ -42,9 +44,11 @@
   "sraf.nd.edu": "icons/sraf.nd.edu.ico",
   "ssrndaily.com": "icons/ssrndaily.com.png",
   "stable-baselines3.readthedocs.io": "icons/stable-baselines3.readthedocs.io.ico",
+  "structureofnews.com": "icons/structureofnews.com.ico",
   "tidy-finance.org": "icons/tidy-finance.org.png",
   "topsight.net": "icons/topsight.net.svg",
   "wrapt.readthedocs.io": "icons/wrapt.readthedocs.io.ico",
   "wrds-www.wharton.upenn.edu": "icons/wrds-www.wharton.upenn.edu.png",
-  "xuruilong100.github.io": "icons/xuruilong100.github.io.png"
+  "xuruilong100.github.io": "icons/xuruilong100.github.io.png",
+  "zhiguohe.net": "icons/zhiguohe.net.ico"
 }

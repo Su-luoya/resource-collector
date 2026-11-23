@@ -463,14 +463,6 @@
   desc: "国标 GB/T 7714-2015 参考文献样式的 biblatex 实现，中文论文投稿必备。"
   added: 2026-04-28
 
-- title: "natbib 教程（bibtex.eu）"
-  url: https://bibtex.eu/zh-cn/natbib/
-  section: [packages]
-  facets:
-    packages: { lang: [tex], kind: doc }
-  desc: "natbib 与 BibTeX 的中文使用手册，覆盖引用样式配置与文献库组织。"
-  added: 2026-04-28
-
 - title: "CiteDrive"
   url: https://www.citedrive.com/
   section: [nav]
@@ -680,22 +672,6 @@
   desc: "面向社会科学研究的 Python 入门仓库，从装环境到读数据、跑分析的整套 notebook 练习。"
   added: 2026-11-23
 
-- title: "Zoom Questions Manager"
-  url: https://github.com/TiesdeKok/zoom-question-manager
-  section: [packages]
-  facets:
-    packages: { lang: [any], kind: ext }
-  desc: "把 Zoom 聊天里的提问收进一个面板统一管理的浏览器扩展，远程授课时用来排提问顺序。"
-  added: 2026-11-23
-
-- title: "JupyterLab Code Bookmarks"
-  url: https://github.com/TiesdeKok/jupyterlab_code_bookmarks
-  section: [packages]
-  facets:
-    packages: { lang: [any], kind: ext }
-  desc: "JupyterLab 扩展，给 notebook 里的代码单元打书签，用法类似 VSCode 的书签插件。"
-  added: 2026-11-23
-
 - title: "Folder Structure Generator"
   url: https://www.tiesdekok.com/folder-structure-generator/
   section: [nav]
@@ -769,4 +745,44 @@
   facets:
     data: { kind: index, topic: [macro] }
   desc: "Jurado-Ludvigson-Ng 方法构造的宏观与金融不确定性指数，1960:07 起、每半年更新，提供 zip 数据、历史版本与附带的 R 代码。"
+  added: 2026-11-23
+
+- title: "Bryan T. Kelly 主页"
+  url: https://www.bryankellyacademic.org/
+  section: [scholar]
+  facets:
+    scholar: { field: [asset, ml, metrics] }
+  desc: "耶鲁 SOM 教授、AQR 机器学习主管 Bryan Kelly 的个人主页，汇总论文、数据与代码，研究方向为资产定价、机器学习与金融计量。"
+  added: 2026-11-23
+
+- title: "JKP Global Factor Data"
+  url: https://jkpfactors.com/
+  section: [data]
+  facets:
+    data: { kind: source, topic: [asset] }
+  desc: "Jensen-Kelly-Pedersen《Is There a Replication Crisis in Finance?》的数据站：93 个国家、153 个因子（13 个主题簇）的收益数据，持续更新可下载。"
+  added: 2026-11-23
+
+- title: "The Structure of Economic News"
+  url: https://structureofnews.com/
+  section: [data]
+  facets:
+    data: { kind: index, topic: [text, macro] }
+  desc: "Bybee-Kelly-Manela-Xiu 用 1984–2017 年 80 万篇 WSJ 全文估出的新闻主题模型，可下载每日/每月主题关注度序列与各主题词权重。"
+  added: 2026-11-23
+
+- title: "中介资本比率与风险因子（何治国）"
+  url: https://zhiguohe.net/data-and-empirical-patterns/intermediary-capital-ratio-and-risk-factor/
+  section: [data]
+  facets:
+    data: { kind: index, topic: [banking, asset] }
+  desc: "He-Kelly-Manela 中介资产定价论文图 1 的更新数据：季度中介资本比率自 1970 年起、日频自 2023 年起，附原始数据下载。"
+  added: 2026-11-23
+
+- title: "Reconciling TRACE Bond Returns"
+  url: https://sethpruitt.net/research.html#reconciling-trace
+  section: [data]
+  facets:
+    data: { kind: source, topic: [asset] }
+  desc: "Kelly-Pruitt 用 WRDS/TRACE 重建公司债收益的论文页，附公开数据下载；说明 TRACE 收益与实务常用 ICE 数据的差异。"
   added: 2026-11-23
