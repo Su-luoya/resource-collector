@@ -65,13 +65,27 @@
 
 ```bash
 npm install
-npm run dev      # 本地预览 http://localhost:4321/resource-collector
+npm run dev      # 本地预览 http://localhost:4321/resource-collector（带增删改）
 npm run check    # 校验 links.yaml（字段、去重、日期、type/topics 白名单）
 npm run build    # 生成 dist/
 npm run preview  # 预览构建产物
 npm run links    # 手动探测全部链接可用性 → src/data/link-status.json
 npm run icons    # 下载各域名 favicon 到 public/icons/（加了新域名后跑一次）
 ```
+
+## 在预览站里直接增删
+
+`npm run dev` 打开 http://localhost:4321/resource-collector/ ，左下角有一条浮动工具条：
+
+- **＋ 新增**：填 URL，点「自动抓取标题与简介」会把页面的 `<title>` / `description` 填进去（抓不到就手写）；标题、简介、类型、主题（可多选）、日期填好后保存。
+- 鼠标移到任意卡片上，右上角出现 `✎`（编辑）和 `✕`（删除），删除会二次确认。
+- **发布**：把改动推上线。依次执行「抓缺失图标 → `npm run check` → commit → `git push origin master`」，push 后 Actions 自动部署到 Pages。工具条会显示当前状态（`已同步 master@xxxx` 或 `未发布：+1 −2`）。
+
+改动一律写回 `src/data/links.yaml`，它仍然是唯一事实源；写盘后 Vite 会让模块失效，页面自动刷新。
+
+**这套东西只在 `npm run dev` 里存在**：`src/middleware.ts` 的 `/api/*` 端点首行 `if (!import.meta.env.DEV) return next()`，前端逻辑用 `import.meta.env.DEV` + 动态 `import('../dev/editor')` 包着，构建时整块被摇掉。已验证 `dist/` 里没有任何编辑层痕迹——线上站是纯静态只读的，要改数据只能在本机 dev 或直接编辑 YAML。
+
+新增一个**新域名**的条目时，图标不会自动存在；点「发布」时它会先跑 `npm run icons` 补齐缺的 favicon，再一起提交。
 
 ## 部署
 

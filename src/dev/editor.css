@@ -1,0 +1,226 @@
+/* dev 编辑层样式：只在 editor.ts 被加载时注入，构建产物里不出现 */
+#dev {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+}
+
+.dev-tag {
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+}
+
+#dev-state {
+  color: var(--fg-muted);
+  font-size: 12px;
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dev-state[data-state='dirty'] {
+  color: var(--warn);
+}
+
+#dev-state[data-state='bad'] {
+  color: var(--fail);
+}
+
+#dev button,
+#dev-dialog button {
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-soft);
+  color: var(--fg);
+  padding: 5px 10px;
+}
+
+#dev button:hover,
+#dev-dialog button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#dev-dialog button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+#dev-dialog button.primary:hover {
+  color: var(--bg);
+  filter: brightness(1.06);
+}
+
+#dev-dialog button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+#dev-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  box-shadow: 0 24px 70px -20px rgba(0, 0, 0, 0.5);
+}
+
+#dev-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#dev-form {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px 16px;
+}
+
+#dev-form h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.dev-field {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.dev-field input,
+.dev-field textarea,
+.dev-field select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 7px 9px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dev-field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.dev-field em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.dev-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dev-topics {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 10px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.dev-topics legend {
+  padding: 0 4px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-topics label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.dev-fetch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.dev-err {
+  margin: 0;
+  color: var(--fail);
+  font-size: 12.5px;
+}
+
+.dev-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.dev-actions .del {
+  margin-right: auto;
+  color: var(--fail);
+  border-color: var(--fail);
+}
+
+.dev-actions .del:hover {
+  color: var(--fail);
+  filter: brightness(1.1);
+}
+
+.dev-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: none;
+  gap: 4px;
+}
+
+.card:hover .dev-card-actions,
+.card:focus-within .dev-card-actions {
+  display: flex;
+}
+
+.dev-card-actions button {
+  font: 12px/1 system-ui, sans-serif;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-elev);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.dev-card-actions button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dev-card-actions button.del:hover {
+  color: var(--fail);
+  border-color: var(--fail);
+}

@@ -4,6 +4,7 @@
 
 ## 日常动作：用户发来新链接时
 
+0. 用户可能已经自己在本地预览站里增删了：`npm run dev` → http://localhost:4321/resource-collector/ ，左下浮动工具条有「＋ 新增 / 发布」，每张卡片悬停出 `✎` / `✕`。那些操作直接改 `src/data/links.yaml`（唯一事实源），所以动手前先 `git status --short src/data/links.yaml` 看一眼有没有他的未提交改动，别覆盖。
 1. 打开 `src/data/links.yaml`，在**文件末尾追加**（不要按类型/主题分组重排，写入顺序无所谓，页面会自己排序）：
    ```yaml
    - title: 名称
@@ -24,6 +25,9 @@
 - 不新建分类：先改 `src/data/taxonomy.json` 的 `types` / `topics`（id + label + hint），再加到数据里，否则 `npm run check` 与构建都报错。
 - 不改 `astro.config.mjs` 的 `base`，除非仓库改名（改了两处要同步：`site` + `base`）。
 - 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件），字体走系统栈。
+- dev 编辑层必须留在 dev 里：markup 走 `import.meta.env.DEV` 条件渲染、逻辑走动态 `import('../dev/editor')`，`npm run build` 后 `dist/` 里不许出现 `dev-dialog` / `api/edit` 等任何痕迹（已验证）。
+- 不把这套接进线上 Pages：那是纯静态站，没有进程可写盘。线上只读，改数据只能在本机 dev 或直接改 YAML。
+- 写接口只放 `src/middleware.ts` 且首行 `if (!import.meta.env.DEV) return next()`；不要新增其他能写盘的入口。
 
 ## 关键文件
 
@@ -33,4 +37,7 @@
 - `src/pages/index.astro` — 唯一页面（含全部客户端交互脚本）
 - `src/styles/global.css` — 全部样式（含深浅色变量）
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`
+- `src/middleware.ts` — dev-only 的 `/api/meta|edit|status|publish`（构建与线上完全不生效）
+- `src/lib/link-data.mjs` — YAML 序列化 / 解析 / 校验的共用实现（`scripts/validate.mjs` 也用它，两边规则不会漂移）
+- `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的增删改 UI 与发布按钮，仅 dev 加载
 - `.github/workflows/deploy.yml`（push 即部署）、`link-check.yml`（每周链接体检并提交结果）
