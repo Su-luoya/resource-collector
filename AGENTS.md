@@ -5,14 +5,15 @@
 ## 日常动作：用户发来新链接时
 
 0. 用户可能已经自己在本地预览站里增删了：`npm run dev` → http://localhost:4321/resource-collector/ ，左下浮动工具条有「＋ 新增 / 发布」，每张卡片悬停出 `✎` / `✕`。那些操作直接改 `src/data/links.yaml`（唯一事实源），所以动手前先 `git status --short src/data/links.yaml` 看一眼有没有他的未提交改动，别覆盖。
-1. 打开 `src/data/links.yaml`，在**文件末尾追加**（不要按类型/主题分组重排，写入顺序无所谓，页面会自己排序）：
+1. 打开 `src/data/links.yaml`，在**文件末尾追加**（不要按分区/分类分组重排，写入顺序无所谓，页面会自己排序）：
    ```yaml
-   - title: 名称
+   - title: "名称"
      url: https://...
-     type: scholar      # 单选，10 类之一，取值见 src/data/taxonomy.json 的 types
-     topics: [econ]     # 可多选，可为 []，取值见同一文件的 topics
-     desc: 一句中文简介，≤120 字，说清「是什么 + 有什么用」
-     added: YYYY-MM-DD  # 当天日期
+     section: [scholar]            # 可多选，不能为空；4 个分区见 taxonomy.json 的 sections
+     facets:                       # 按分区嵌套，每个分区只写它自己声明的轴
+       scholar: { field: [asset] } # field 多选；data 用 kind/topic，packages 用 lang/kind，nav 用 kind
+     desc: "一句中文简介，≤120 字，说清「是什么 + 有什么用」"
+     added: YYYY-MM-DD             # 当天日期
    ```
 2. `desc` 只写用户能验证的事实（官网自述、实际页面内容）。**不要编造**作者、机构、功能。抓不到页面内容就先问用户，或写保守描述。
 3. 只有新域名的域名才需要 `npm run icons` 重新抓图标（已有域名会跳过）。
@@ -21,8 +22,9 @@
 ## 不要做
 
 - 不收录带登录态的控制台、付费后台、校内门户、机场/代理订阅链接；服务类只放官网首页。
-- **按分面分类归类**，不要层叠：先定 `type`（资源主体是什么，不是「页面长得像什么」——一个包的官方文档站仍是 `code`，讲怎么用它才是 `doc`），再补 1–2 个 `topics`（讲什么领域）。不要为了凑满而堆主题。
-- 不新建分类：先改 `src/data/taxonomy.json` 的 `types` / `topics`（id + label + hint），再加到数据里，否则 `npm run check` 与构建都报错。
+- **按分面分类归类**，不要层叠：先定 `section`（进哪几页，可多值——tidy-finance 既是数据处理代码又是包，就 `[data, packages]`），再写该分区的 `facets`。判断优先级是「资源主体是什么」，不是「页面长得像什么」——一个包的官方文档站算 `packages` 的 `pkg`，讲怎么用它才是 `doc`。
+- 不新建分区或分类：先改 `src/data/taxonomy.json` 的 `sections`（id + label + hint + badge + facets），再加到数据里，否则 `npm run check` 与构建都报错。分区页路由由它生成，加第 5 块不用写新页面。
+- 学者页的 `field` 判不出来就留 `[]`，不要为了填满而编造研究方向。
 - 不改 `astro.config.mjs` 的 `base`，除非仓库改名（改了两处要同步：`site` + `base`）。
 - 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件），字体走系统栈。
 - dev 编辑层必须留在 dev 里：markup 走 `import.meta.env.DEV` 条件渲染、逻辑走动态 `import('../dev/editor')`，`npm run build` 后 `dist/` 里不许出现 `dev-dialog` / `api/edit` 等任何痕迹（已验证）。
@@ -32,12 +34,14 @@
 ## 关键文件
 
 - `src/data/links.yaml` — 数据（唯一事实源）
-- `src/data/taxonomy.json` — 分面词表：`types`（资源形态）/ `topics`（主题）
-- `src/lib/links.ts` — 词表加载与计数、排序、搜索文本、图标表读取
-- `src/pages/index.astro` — 唯一页面（含全部客户端交互脚本）
+- `src/data/taxonomy.json` — 分区与分类词表：`sections`（分区 → 各自的 facets 轴与取值，`badge` 指定卡片徽标用哪条轴）
+- `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序、搜索文本、图标表读取
+- `src/components/Catalog.astro` — 首页与分区页共用的页面骨架（导航 / chips / 卡片墙 / dev 表单）
+- `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 四个分区页（路由由 taxonomy 生成）
+- `src/client/filter.ts` — 客户端筛选：轴从 chip 的 `data-facet` 读，首页只有 section 一条轴
 - `src/styles/global.css` — 全部样式（含深浅色变量）
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`
 - `src/middleware.ts` — dev-only 的 `/api/meta|edit|status|publish`（构建与线上完全不生效）
-- `src/lib/link-data.mjs` — YAML 序列化 / 解析 / 校验的共用实现（`scripts/validate.mjs` 也用它，两边规则不会漂移）
+- `src/lib/link-data.mjs` — YAML 序列化 / 解析 / 校验（section + 嵌套 facets）的共用实现（`scripts/validate.mjs` 也用它，两边规则不会漂移）
 - `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的增删改 UI 与发布按钮，仅 dev 加载
 - `.github/workflows/deploy.yml`（push 即部署）、`link-check.yml`（每周链接体检并提交结果）
