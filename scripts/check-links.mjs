@@ -4,10 +4,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { parse } from 'yaml';
+import { parseLinks } from '../src/lib/link-data.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const links = parse(readFileSync(resolve(root, 'src/data/links.yaml'), 'utf8')).links;
+const links = parseLinks(readFileSync(resolve(root, 'src/data/links.yaml'), 'utf8'));
 const outFile = resolve(root, 'src/data/link-status.json');
 
 const TIMEOUT = 12_000;
@@ -56,7 +56,12 @@ async function worker() {
   while (queue.length) {
     const l = queue.shift();
     const r = await probe(l.url);
-    result[l.url] = { status: r.level, ...(r.error ? { error: r.error } : { code: r.status }), checked: today };
+    result[l.url] = {
+      status: r.level,
+      ...(r.error ? { error: r.error } : { code: r.status }),
+      ...(r.finalUrl && r.finalUrl !== l.url ? { final: r.finalUrl } : {}),
+      checked: today,
+    };
     const mark = r.level === 'ok' ? '✓' : r.level === 'warn' ? '±' : '✗';
     console.log(`${mark} ${r.status || r.error} ${l.url}`);
   }

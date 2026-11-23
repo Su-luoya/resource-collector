@@ -1,8 +1,6 @@
 ---
 import '../styles/global.css';
-
-const rawBase = import.meta.env.BASE_URL;
-const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+import { base } from '../lib/site';
 ---
 
 <!doctype html>

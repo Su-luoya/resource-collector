@@ -8,7 +8,7 @@
 
 ## 加一条资源
 
-编辑 `src/data/links.yaml`，在 `links:` 下追加：
+编辑 `src/data/links.yaml`，在文件末尾追加（顶层是数组，不需要分组排序，页面自己排）：
 
 ```yaml
 - title: JAX
@@ -67,10 +67,29 @@
 npm install
 npm run dev      # 本地预览 http://localhost:4321/resource-collector（带增删改）
 npm run check    # 校验 links.yaml（字段、去重、日期、type/topics 白名单）
+npm test         # 跑 test/ 下的单元测试与数据不变量（node --test）
 npm run build    # 生成 dist/
 npm run preview  # 预览构建产物
 npm run links    # 手动探测全部链接可用性 → src/data/link-status.json
 npm run icons    # 下载各域名 favicon 到 public/icons/（加了新域名后跑一次）
+```
+
+## 代码结构
+
+```
+src/
+  data/            links.yaml（事实源）、taxonomy.json（词表）、icons.json、link-status.json
+  lib/
+    links.ts       读词表与数据、计数、排序、搜索文本、图标查询（服务端用）
+    site.ts        site / base 的单一来源，页面与 rss 都从这里取
+    link-data.mjs  YAML 序列化 / 解析 / 校验（check 脚本与 dev 端点共用，纯函数，可被 node 直接跑）
+    dev-meta.mjs   抓页面 title/description 的纯逻辑（URL 归一化、实体解码、截断）
+  client/filter.ts 首页交互：搜索、分面筛选、hash 深链、键盘导航、主题
+  pages/           index.astro（唯一页面）、links.json.ts、rss.xml.ts
+  dev/editor.ts    仅 dev 加载的增删改 UI（构建时被摇掉）
+  middleware.ts    仅 dev 生效的 /api/{meta,edit,status,publish}
+test/              npm test：link-data / dev-meta 单测 + 数据不变量
+scripts/           validate.mjs（check）、fetch-icons.mjs、check-links.mjs
 ```
 
 ## 在预览站里直接增删
@@ -79,7 +98,7 @@ npm run icons    # 下载各域名 favicon 到 public/icons/（加了新域名�
 
 - **＋ 新增**：填 URL，点「自动抓取标题与简介」会把页面的 `<title>` / `description` 填进去（抓不到就手写）；标题、简介、类型、主题（可多选）、日期填好后保存。
 - 鼠标移到任意卡片上，右上角出现 `✎`（编辑）和 `✕`（删除），删除会二次确认。
-- **发布**：把改动推上线。依次执行「抓缺失图标 → `npm run check` → commit → `git push origin master`」，push 后 Actions 自动部署到 Pages。工具条会显示当前状态（`已同步 master@xxxx` 或 `未发布：+1 −2`）。
+- **发布**：把改动推上线。依次执行「抓缺失图标 → 校验 → commit → push」，push 后 Actions 自动部署到 Pages。commit 只包含数据文件（`src/data/links.yaml`、`src/data/icons.json`、`public/icons/`），工作区里其它改动不会被带走。工具条会显示当前状态（`已同步 master@xxxx` 或 `未发布：+1 −2 ~3`）。
 
 改动一律写回 `src/data/links.yaml`，它仍然是唯一事实源；写盘后 Vite 会让模块失效，页面自动刷新。
 

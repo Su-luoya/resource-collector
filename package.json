@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "node scripts/validate.mjs",
+    "test": "node --test test/",
     "icons": "node scripts/fetch-icons.mjs",
     "links": "node scripts/check-links.mjs"
   },

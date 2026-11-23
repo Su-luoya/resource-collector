@@ -3,6 +3,7 @@ import statusRaw from '../data/link-status.json?raw';
 import iconsJson from '../data/icons.json';
 import taxonomy from '../data/taxonomy.json';
 import { parse } from 'yaml';
+import { hostKey } from './link-data.mjs';
 
 export type TypeId = keyof typeof TYPE_LABEL;
 export type TopicId = string;
@@ -74,19 +75,14 @@ export const topicFacets: FacetWithCount[] = TOPICS.map((t) => ({
   count: links.filter((l) => l.topics.includes(t.id)).length,
 }));
 
-/** 本地图标表：host → public 下的相对路径（scripts/fetch-icons.mjs 生成） */
+/** 本地图标表：规范化域名 → public 下的相对路径（scripts/fetch-icons.mjs 生成） */
 export const icons = iconsJson as Record<string, string>;
 export const iconFor = (host: string): string | undefined => icons[host];
 
 export const statusOf = (url: string): LinkStatus | undefined => statuses[url];
 
-export const hostOf = (url: string): string => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-};
+/** 域名键：去掉 www. 与小写化，与 scripts/fetch-icons.mjs 用同一份规则 */
+export const hostOf = (url: string): string => hostKey(url);
 
 /** 供搜索与 JSON 导出复用：搜索会命中类型名与主题名，输入「学者」也能筛到 */
 export const searchText = (l: Resource): string =>

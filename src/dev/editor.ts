@@ -1,8 +1,9 @@
 // dev 编辑层：只在 `npm run dev` 里被动态 import，构建时整块被摇掉。
 // 端点见 src/middleware.ts；数据层的序列化与校验在 src/lib/link-data.mjs。
 import './editor.css';
+import type { Resource } from '../lib/links';
 
-type Row = { title: string; url: string; type: string; topics: string[]; desc: string; added: string };
+type Row = Resource;
 
 const root = document.getElementById('dev');
 const dialog = document.getElementById('dev-dialog') as HTMLDialogElement | null;
@@ -67,6 +68,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       changed?: number;
       branch?: string;
       head?: string;
+      warns?: string[];
     };
   }
 
@@ -245,8 +247,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       alert(res.errors?.length ? `${res.message}\n\n${res.errors.join('\n')}` : res.message || '发布失败');
       return;
     }
-    say(res.message || '已推送');
-    if (count) alert(`已发布：${res.message}`);
+    say(res.message || '已推送', res.warns?.length ? 'dirty' : 'idle');
+    if (count) alert([`已发布：${res.message}`, ...(res.warns ?? [])].join('\n\n'));
   });
 
   // ---- 初始状态 ----
@@ -254,7 +256,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const status = await send('status');
     if (!status.ok) return;
     if (status.dirty) {
-      say(`未发布：+${status.added ?? 0} −${status.removed ?? 0} ~${status.changed ?? 0}`, 'dirty');
+      const { added = 0, removed = 0, changed = 0 } = status;
+      say(
+        added + removed + changed > 0
+          ? `未发布：+${added} −${removed} ~${changed}`
+          : '未发布：数据文件有改动（图标等）',
+        'dirty',
+      );
     } else {
       say(`已同步 ${status.branch}@${status.head}`);
     }

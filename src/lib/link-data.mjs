@@ -21,9 +21,28 @@ const q = (value) =>
     .replace(/\t/g, '\\t') +
   '"';
 
+/**
+ * 域名规范化：去掉 www.、统一小写。
+ * 图标表（src/data/icons.json）的键与页面查图标的键必须是同一把，否则 www 站点的图标全部查不到。
+ * 入参可以是完整 URL 或裸域名。
+ */
+export const hostKey = (input) => {
+  const text = String(input ?? '').trim();
+  if (!text) return '';
+  try {
+    const url = text.includes('://') ? new URL(text) : new URL(`https://${text}`);
+    return url.hostname.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+/** 块状 plain 标量里只有空白和「: 」会被误读；其余原样输出，保持与现有文件逐字节一致 */
+const plain = (value) => (/\s|: /.test(value) || /^[-?:,[\]{}#&*!|>'"%@`]/.test(value) ? q(value) : value);
+
 const dumpOne = (r) =>
   `- title: ${q(r.title)}\n` +
-  `  url: ${r.url}\n` +
+  `  url: ${plain(r.url)}\n` +
   `  type: ${r.type}\n` +
   `  topics: [${(r.topics ?? []).join(', ')}]\n` +
   `  desc: ${q(r.desc)}\n` +
@@ -43,6 +62,15 @@ export const dumpLinks = (rows, raw) => {
   const at = raw.indexOf('- title:');
   const head = at === -1 ? '' : raw.slice(0, at);
   return head + rows.map(dumpOne).join('\n');
+};
+
+const isParseable = (value) => {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -73,8 +101,11 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
 
     if (typeof l.url === 'string') {
       if (!/^https?:\/\//.test(l.url)) err(`${at}.url 必须以 http(s):// 开头：${l.url}`);
-      const prev = seen.get(l.url);
-      if (prev) err(`${at}.url 与 links[${prev}] 重复：${l.url}`);
+      else if (/\s/.test(l.url)) err(`${at}.url 含空白字符：${JSON.stringify(l.url)}`);
+      else if (!isParseable(l.url)) err(`${at}.url 解析失败：${l.url}`);
+
+      // 用 has() 而不是取值判断：首条就是 links[0]，下标 0 是 falsy
+      if (seen.has(l.url)) err(`${at}.url 与 links[${seen.get(l.url)}] 重复：${l.url}`);
       else seen.set(l.url, i);
     }
 

@@ -11,14 +11,18 @@
 import { defineMiddleware } from 'astro:middleware';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { dumpLinks, parseLinks, validateRows, diffRows } from './lib/link-data.mjs';
+import { clean, extractMeta, normUrl, sameUrl } from './lib/dev-meta.mjs';
 
 const ROOT = process.cwd();
 const DATA_REL = 'src/data/links.yaml';
 const ICONS_REL = 'src/data/icons.json';
 const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
+
+/** 一条链接的存储形态；字段顺序、引号规则见 src/lib/link-data.mjs */
+type LinkRow = { title: string; url: string; type: string; topics: string[]; desc: string; added: string };
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -28,12 +32,12 @@ const json = (body: unknown, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-const readRows = () => {
+const readRows = (): { raw: string; rows: LinkRow[] } => {
   const raw = readFileSync(resolve(ROOT, DATA_REL), 'utf8');
-  return { raw, rows: parseLinks(raw) };
+  return { raw, rows: parseLinks(raw) as LinkRow[] };
 };
 
-const writeRows = (rows: unknown[], raw: string) => {
+const writeRows = (rows: LinkRow[], raw: string) => {
   const target = resolve(ROOT, DATA_REL);
   const tmp = `${target}.tmp`;
   writeFileSync(tmp, dumpLinks(rows, raw), 'utf8');
@@ -41,55 +45,6 @@ const writeRows = (rows: unknown[], raw: string) => {
 };
 
 const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
-
-const sameUrl = (a: string, b: string) => a === b || a.replace(/\/$/, '') === b.replace(/\/$/, '');
-
-const normUrl = (input: unknown): { url?: string; error?: string } => {
-  let url = String(input ?? '').trim();
-  if (!url) return { error: 'URL 不能为空' };
-  if (!/^https?:\/\//i.test(url)) {
-    const scheme = url.match(/^([a-z][a-z0-9+.-]*):/i);
-    if (scheme) return { error: `只接受 http(s) 链接，收到 ${scheme[1]}:` };
-    url = `https://${url}`;
-  }
-  try {
-    new URL(url);
-  } catch {
-    return { error: `URL 解析失败：${url}` };
-  }
-  return { url };
-};
-
-const clean = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
-
-const decodeEntities = (s: string) =>
-  s
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;|&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-
-/** 从一段 HTML 里取 title 与 description，够用即可：不引 HTML 解析器 */
-const extractMeta = (html: string) => {
-  const title = decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '');
-  let desc = '';
-  let source = '';
-  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
-    const name = (tag.match(/\b(?:name|property)\s*=\s*["']([^"']+)["']/i)?.[1] ?? '').toLowerCase();
-    if (!['description', 'og:description', 'twitter:description'].includes(name)) continue;
-    const content = tag.match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1] ?? '';
-    if (content.trim()) {
-      desc = decodeEntities(content);
-      source = name === 'description' ? 'description' : 'og';
-      if (name === 'description') break; // 优先 <meta name="description">
-    }
-  }
-  return { title: clean(title, 80), desc: clean(desc, 120), source };
-};
 
 const fetchMeta = async (url: string) => {
   const ctrl = new AbortController();
@@ -135,14 +90,24 @@ const gitError = (error: unknown) => {
   return (e?.stderr || e?.stdout || e?.message || String(error)).trim();
 };
 
+/** 异步跑子进程：图标抓取可能要几十秒，同步版本会把整个 dev server 卡住 */
+const run = (command: string, args: string[], timeout: number) =>
+  new Promise<{ ok: boolean; stdout: string; stderr: string }>((done) => {
+    execFile(command, args, { cwd: ROOT, timeout, maxBuffer: 16 << 20 }, (error, stdout, stderr) => {
+      done({ ok: !error, stdout: stdout ?? '', stderr: error ? stderr || String(error) : (stderr ?? '') });
+    });
+  });
+
+const tail = (text: string, lines = 2) => text.trim().split('\n').slice(-lines).join(' ').trim();
+
 /** 当前工作区里这三类数据文件是否有未提交改动 */
 const dataDirty = () => gitOr(['status', '--porcelain', '--', DATA_REL, ICONS_REL, ICONS_DIR]) !== '';
 
 /** 与 HEAD 里的 links.yaml 对比，得出待发布的新增/删除/修改条数 */
-const pendingDiff = (rows: unknown[]) => {
+const pendingDiff = (rows: LinkRow[]) => {
   const prevRaw = gitOr(['show', `HEAD:${DATA_REL}`]);
   if (!prevRaw) return { added: rows.length, removed: 0, changed: 0 };
-  return diffRows(parseLinks(prevRaw), rows as never[]);
+  return diffRows(parseLinks(prevRaw) as LinkRow[], rows);
 };
 
 const handleEdit = async (request: Request) => {
@@ -209,23 +174,25 @@ const handleEdit = async (request: Request) => {
   return json({ ok: false, message: `未知操作：${action || '空'}` }, 400);
 };
 
-const handlePublish = () => {
+const handlePublish = async () => {
   const { rows } = readRows();
   const { errors, warns } = validateRows(rows, taxonomy());
   if (errors.length) {
     return json({ ok: false, message: `校验未通过，已中止发布（${errors.length} 个问题）`, errors }, 400);
   }
 
-  // 补抓新域名的图标：脚本自身幂等，已存在的直接跳过
-  const icons = spawnSync(process.execPath, ['scripts/fetch-icons.mjs'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    timeout: 180_000,
-  });
-  const iconTail = (icons.stdout || '').trim().split('\n').slice(-1)[0] ?? '';
+  // 补抓新域名的图标：脚本自身幂等，已存在的直接跳过。抓不到不阻断发布，只在结果里说明。
+  const icons = await run(process.execPath, ['scripts/fetch-icons.mjs'], 180_000);
+  const iconNote = icons.ok ? '' : `图标脚本失败：${tail(icons.stderr) || '未知原因'}`;
+  if (iconNote) warns.push(iconNote);
 
   if (!dataDirty()) {
-    return json({ ok: true, nothing: true, message: '没有需要发布的数据改动', warns });
+    return json({
+      ok: true,
+      nothing: true,
+      message: iconNote ? `没有需要发布的数据改动（${iconNote}）` : '没有需要发布的数据改动',
+      warns,
+    });
   }
 
   const { added, removed, changed } = pendingDiff(rows);
@@ -246,9 +213,10 @@ const handlePublish = () => {
   }
 
   const hash = gitOr(['rev-parse', '--short', 'HEAD']);
+  const branch = gitOr(['rev-parse', '--abbrev-ref', 'HEAD'], 'master');
 
   try {
-    git(['push', 'origin', 'master']);
+    git(['push', 'origin', branch]);
   } catch (error) {
     const detail = gitError(error);
     const rejected = /rejected|non-fast-forward|fetch first/i.test(detail);
@@ -265,7 +233,7 @@ const handlePublish = () => {
     );
   }
 
-  return json({ ok: true, message: `${message}（${hash}）已推送`, hash, iconTail, warns });
+  return json({ ok: true, message: `${message}（${hash}）已推送`, hash, branch, warns });
 };
 
 const handleStatus = () => {
@@ -283,6 +251,19 @@ const handleStatus = () => {
   });
 };
 
+/**
+ * 浏览器发的跨站请求一定带 Origin（同源 POST 也带）；没有 Origin 的是 curl / 脚本。
+ * 挡住「随便点开一个恶意页面就能往本地 dev server 写盘、甚至 push」这种情况。
+ */
+const sameOrigin = (origin: string | null, host: string) => {
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+};
+
 export const onRequest = defineMiddleware(async (context, next) => {
   if (!import.meta.env.DEV) return next();
 
@@ -293,16 +274,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const route = path.slice(apiAt + '/api/'.length).replace(/\/$/, '');
   const method = context.request.method;
 
+  if (method !== 'GET' && !sameOrigin(context.request.headers.get('origin'), context.url.host)) {
+    return json({ ok: false, message: '拒绝跨站请求' }, 403);
+  }
+
   if (route === 'meta' && method === 'POST') {
-    let url: string | undefined;
+    let target: ReturnType<typeof normUrl>;
     try {
       const body = await context.request.json();
-      url = normUrl(body?.url).url;
+      target = normUrl(body?.url);
     } catch {
       return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
     }
-    if (!url) return json({ ok: false, message: 'URL 不能为空' }, 400);
-    return json(await fetchMeta(url));
+    // 把「只接受 http(s)」「含空白」这类具体原因透给前端，不要一律报成「不能为空」
+    if (target.error) return json({ ok: false, message: target.error }, 400);
+    return json(await fetchMeta(target.url as string));
   }
 
   if (route === 'edit' && method === 'POST') return handleEdit(context.request);
@@ -314,7 +300,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (route === 'publish' && method === 'POST') {
     try {
-      return handlePublish();
+      return await handlePublish();
     } catch (error) {
       return json({ ok: false, message: `发布失败：${gitError(error)}` }, 500);
     }
