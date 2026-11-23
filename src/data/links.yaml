@@ -633,3 +633,66 @@
   topics: [econ]
   desc: "每日汇总 SSRN 新上传论文的速览站，用于快速扫一遍当天的新工作论文。"
   added: 2026-07-14
+
+- title: "IPyStata"
+  url: https://github.com/TiesdeKok/ipystata
+  type: code
+  topics: [py, metrics]
+  desc: "在 Jupyter notebook 里直接调用 Stata 的 Python 包，Stata 17 起已被官方集成。"
+  added: 2026-11-23
+
+- title: "ChatGPT for Jupyter（Chrome 扩展）"
+  url: https://github.com/TiesdeKok/chat-gpt-jupyter-extension
+  type: code
+  topics: [ai, py]
+  desc: "在 Jupyter notebook 里调用 ChatGPT 做代码解释与改写的浏览器扩展，仓库 2023 年后已归档。"
+  added: 2026-11-23
+
+- title: "SUMHDFE"
+  url: https://github.com/ed-dehaan/sumhdfe
+  type: code
+  topics: [metrics]
+  desc: "Stata 命令，汇报高维固定效应内部的变异程度与诊断信息，用来判断 FE 吃掉了多少识别变异。"
+  added: 2026-11-23
+
+- title: "Fast XBRL Parser"
+  url: https://github.com/TiesdeKok/fast_xbrl_parser
+  type: code
+  topics: [econ]
+  desc: "Rust 写的 XBRL 解析器，把财报 XBRL 文件快速转成 JSON 或 CSV，命令行即用。"
+  added: 2026-11-23
+
+- title: "Learn Python for Research"
+  url: https://github.com/TiesdeKok/LearnPythonforResearch
+  type: doc
+  topics: [py]
+  desc: "面向社会科学研究的 Python 入门仓库，从装环境到读数据、跑分析的整套 notebook 练习。"
+  added: 2026-11-23
+
+- title: "Python NLP Tutorial"
+  url: https://github.com/TiesdeKok/Python_NLP_Tutorial
+  type: doc
+  topics: [py, ml]
+  desc: "面向文本挖掘与自然语言处理的 Python 入门仓库，配套可运行的 notebook 练习。"
+  added: 2026-11-23
+
+- title: "Zoom Questions Manager"
+  url: https://github.com/TiesdeKok/zoom-question-manager
+  type: code
+  topics: []
+  desc: "把 Zoom 聊天里的提问收进一个面板统一管理的浏览器扩展，远程授课时用来排提问顺序。"
+  added: 2026-11-23
+
+- title: "JupyterLab Code Bookmarks"
+  url: https://github.com/TiesdeKok/jupyterlab_code_bookmarks
+  type: code
+  topics: [py]
+  desc: "JupyterLab 扩展，给 notebook 里的代码单元打书签，用法类似 VSCode 的书签插件。"
+  added: 2026-11-23
+
+- title: "Folder Structure Generator"
+  url: https://www.tiesdekok.com/folder-structure-generator/
+  type: tool
+  topics: []
+  desc: "Ties de Kok 做的网页小工具，按研究项目类型一键生成规范的多级文件夹结构。"
+  added: 2026-11-23
