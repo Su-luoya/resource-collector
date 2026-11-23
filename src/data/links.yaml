@@ -151,13 +151,6 @@
   desc: "谷歌学术，被引追踪与全文检索的主力入口（中文界面）。"
   added: 2026-04-28
 
-- title: "中国知网"
-  url: https://www.cnki.net/
-  type: search
-  topics: []
-  desc: "中文期刊与学位论文数据库，需机构账号（如校内 IP）访问全文。"
-  added: 2026-04-28
-
 - title: "AMiner"
   url: https://www.aminer.cn/?f=zh
   type: search
@@ -431,13 +424,6 @@
   desc: "把 Excel/CSV 表格一键转成 LaTeX tabular 代码，省去手写列格式。"
   added: 2026-04-28
 
-- title: "用 natbib 管理参考文献"
-  url: https://blog.csdn.net/xovee/article/details/109715706
-  type: doc
-  topics: [writing]
-  desc: "中文教程，讲 natbib 的 citep/citet、作者年份制与常见编译报错处理。"
-  added: 2026-04-28
-
 - title: "biblatex-gb7714-2015"
   url: https://github.com/hushidong/biblatex-gb7714-2015
   type: code
@@ -464,13 +450,6 @@
   type: service
   topics: [writing]
   desc: "云端 BibTeX 文献库，可与 Overleaf 联动，按项目组织参考文献。"
-  added: 2026-04-28
-
-- title: "Bibtex Converter"
-  url: https://asouqi.github.io/bibtex-converter/
-  type: tool
-  topics: [writing]
-  desc: "在线把 BibTeX 条目转成 PDF/HTML/Word/纯文本等多种引用格式。"
   added: 2026-04-28
 
 - title: "Ponder AI"
