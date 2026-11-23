@@ -15,6 +15,9 @@ import {
 } from '../lib/links';
 import type { Resource } from '../lib/links';
 
+/** 卡片底部最多显示几个分类标签，超出的折成 +N（首页跨分区的卡片标签最容易溢出） */
+const MAX_TAGS = 3;
+
 export interface Chip {
   id: string;
   label: string;
@@ -158,6 +161,8 @@ const rssHref = `${base}rss.xml`;
         const linkBad = st && (st.status === 'fail' || st.status === 'warn');
         const badge = st?.status === 'fail' ? '链接可能失效' : '链接待确认';
         const attrs = facetAttrs(l, sectionId);
+        // 首页一条资源会同时带多个分区的分类，不限数量会撑破卡片：只用前 3 个，其余折成「+N」
+        const tags = tagLabels(l, sectionId);
         return (
           <a
             class="card"
@@ -184,9 +189,14 @@ const rssHref = `${base}rss.xml`;
             <span class="card-bottom">
               <span class="type-badge">{badgeLabels(l, sectionId).join(' · ')}</span>
               <span class="mini-tags">
-                {tagLabels(l, sectionId).map((t) => (
+                {tags.slice(0, MAX_TAGS).map((t) => (
                   <span class="mini-tag">{t}</span>
                 ))}
+                {tags.length > MAX_TAGS && (
+                  <span class="mini-tag more" title={tags.slice(MAX_TAGS).join('、')}>
+                    +{tags.length - MAX_TAGS}
+                  </span>
+                )}
               </span>
               {linkBad && (
                 <span class={st!.status === 'fail' ? 'badge-fail' : 'badge-warn'} title={`最近检查：${st!.checked}`}>
