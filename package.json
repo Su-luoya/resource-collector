@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "check": "node scripts/validate.mjs",
     "typecheck": "astro check",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "icons": "node scripts/fetch-icons.mjs",
     "links": "node scripts/check-links.mjs"
   },
