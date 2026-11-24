@@ -169,10 +169,10 @@ scripts/           validate.mjs（check）、fetch-icons.mjs、check-links.mjs
 
 ## 链接体检
 
-`.github/workflows/link-check.yml` 每周一自动探测所有 URL，把结果写入 `src/data/link-status.json`。
+`.github/workflows/link-check.yml` 每周一自动探测所有 URL，把结果写入 `link_status` 表，再触发一次重建。
 返回 401/403/405/429 视为 `warn`（要登录或反爬），其余非 2xx/3xx 视为 `fail`，卡片上会出现对应角标。重定向逐跳手动跟随，因此能保留状态码链，而不只是最终地址。
 
-只有同时满足「每一跳都是 301/308、最终 HTTPS 2xx、主机名不变、新地址未占用」时，脚本才会自动改库里的 URL。临时/混合、跨主机重定向不自动改；这些和 `fail` 会进入本地预览站的「链接维护」面板。周检结束后把结果写进 `link_status` 表，再触发一次重建让状态上线——不再提交任何文件。
+只有同时满足「每一跳都是 301/308、最终 HTTPS 2xx、主机名不变、新地址未占用」时，脚本才会自动改库里的 URL。临时/混合、跨主机重定向不自动改；这些和 `fail` 会进入本地预览站的「链接维护」面板。周检结束后会触发一次重建，让状态上线——不再提交任何文件。
 
 ## 私有链接
 

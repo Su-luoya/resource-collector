@@ -1,7 +1,7 @@
 // src/lib/link-data.mjs 的单元测试：`npm test`
 //
 // 这层逻辑被 `npm run check`（node 直跑）与 dev 编辑端点（写盘前校验）共用，
-// 规则错了会直接写坏 src/data/links.yaml，所以先在这里钉住。
+// 规则错了会直接写坏云端数据（写库前整表校验），所以先在这里钉住。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -243,7 +243,7 @@ test('title/desc 超长会报错', () => {
 });
 
 test('顶层不是数组时直接报错，不抛异常', () => {
-  assert.deepEqual(validateRows({ foo: 1 }, taxonomy, today).errors, ['links.yaml 顶层必须是链接数组']);
+  assert.deepEqual(validateRows({ foo: 1 }, taxonomy, today).errors, ['数据顶层必须是链接数组']);
 });
 
 test('diffRows 按 url 给出 新增 / 删除 / 修改', () => {

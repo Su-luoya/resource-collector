@@ -13,7 +13,7 @@ const q = JSON.stringify;
 
 /**
  * 域名规范化：去掉 www.、统一小写。
- * 图标表（src/data/icons.json）的键与页面查图标的键必须是同一把，否则 www 站点的图标全部查不到。
+ * 图标表（云端 icons 表）的键与页面查图标的键必须是同一把，否则 www 站点的图标全部查不到。
  * 入参可以是完整 URL 或裸域名。
  */
 export const hostKey = (input) => {
@@ -74,7 +74,7 @@ export const parseLinks = (raw) => {
   if (Array.isArray(parsed?.links) && Object.keys(parsed).length === 1) return parsed.links;
   // 旧版编辑器删光后只留下头部注释；其它非数组的文档不能当作空库写回。
   if (parsed === null && headerOf(raw) === raw) return [];
-  throw new Error('links.yaml 顶层必须是链接数组');
+  throw new Error('数据顶层必须是链接数组');
 };
 
 /** 保留头部注释，其余按固定模板输出；对现有数据逐字节复现。 */
@@ -108,7 +108,7 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
   const err = (m) => errors.push(m);
 
   if (!Array.isArray(rows)) {
-    return { errors: ['links.yaml 顶层必须是链接数组'], warns };
+    return { errors: ['数据顶层必须是链接数组'], warns };
   }
 
   const seen = new Map();
