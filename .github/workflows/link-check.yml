@@ -22,14 +22,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/check-links.mjs
-      - name: Commit status report
+      - name: Verify automatic fixes
         run: |
-          if [[ -n "$(git status --porcelain src/data/link-status.json)" ]]; then
+          if [[ -n "$(git status --porcelain src/data/links.yaml)" ]]; then
+            npm run check
+            npm test
+            npm run typecheck
+            npm run build
+          fi
+      - name: Commit status and safe redirects
+        run: |
+          if [[ -n "$(git status --porcelain src/data/link-status.json src/data/links.yaml)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/data/link-status.json
-            git commit -m "chore: 更新链接可用性检查结果"
-            git push
+            git add src/data/links.yaml src/data/link-status.json
+            if [[ -n "$(git diff --cached --name-only -- src/data/links.yaml)" ]]; then
+              git commit -m "fix: 自动修复永久重定向" -m "$(git diff --cached --unified=0 -- src/data/links.yaml)"
+            else
+              git commit -m "chore: 更新链接可用性检查结果"
+            fi
+            git push origin HEAD:master
           else
             echo "状态无变化，跳过提交"
           fi
