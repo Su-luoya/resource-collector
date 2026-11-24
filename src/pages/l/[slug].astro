@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { links, SLUGS, SECTIONS, hostOf, iconFor, statusOf, tagLabels, unreadCount } from '../../lib/links';
+import { links, SLUGS, SECTIONS, hostOf, iconFor, statusOf, tagLabels } from '../../lib/links';
 import { renderNote } from '../../lib/note.mjs';
 import { base } from '../../lib/site';
 
@@ -8,13 +8,12 @@ export const getStaticPaths = () =>
   links.map((l) => ({ params: { slug: SLUGS.get(l.url) }, props: { link: l } }));
 
 const { link: l } = Astro.props;
-const host = hostOf(l);
-const icon = iconFor(l);
-const status = statusOf(l);
+const host = hostOf(l.url);
+const icon = iconFor(host);
+const status = statusOf(l.url);
 const sections = SECTIONS.filter((s) => l.section.includes(s.id));
 const tags = tagLabels(l);
 const note = l.note ? renderNote(l.note) : '';
-const unread = unreadCount();
 
 const meta = [
   l.added ? `收录于 ${l.added}` : '',
