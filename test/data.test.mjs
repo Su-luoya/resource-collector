@@ -1,29 +1,28 @@
 // 数据与派生产物的不变量：跑 `npm test` 就能发现「图标表键漂了」「yaml 写坏了」这类问题。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { readCache } from '../src/lib/cloud-sync.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { hostKey, parseLinks, validateRows, dumpLinks } = await import(resolve(root, 'src/lib/link-data.mjs'));
+const { hostKey, validateRows } = await import(resolve(root, 'src/lib/link-data.mjs'));
 
 const read = (rel) => readFileSync(resolve(root, rel), 'utf8');
-const rawLinks = read('src/data/links.yaml');
-const links = parseLinks(rawLinks);
+// 数据在 Supabase；.cache/links.json 是 `npm run sync` 拉下来的快照，构建与测试都读它。
+const cache = readCache(resolve(root, '.cache/links.json'));
+const links = cache.links;
 const taxonomy = JSON.parse(read('src/data/taxonomy.json'));
-const icons = JSON.parse(read('src/data/icons.json'));
-const status = JSON.parse(read('src/data/link-status.json'));
+const icons = cache.icons ?? {};
+const status = cache.status ?? {};
 
 const sections = new Map(taxonomy.sections.map((s) => [s.id, s]));
 
-test('links.yaml 通过校验', () => {
+test('云端数据通过校验', () => {
   const { errors } = validateRows(links, taxonomy);
   assert.deepEqual(errors, []);
-});
-
-test('links.yaml 与编辑层序列化格式一致（否则一次编辑就会重排全文件）', () => {
-  assert.equal(dumpLinks(links, rawLinks), rawLinks);
 });
 
 test('taxonomy 的分区、分类轴与取值都登记完整且不重复', () => {
@@ -80,7 +79,7 @@ test('每条资源的分区与分类都落在词表里（越界构建就会炸�
   }
 });
 
-test('图标表的键是规范化域名，且文件都存在', () => {
+test('图标表的键是规范化域名，且文件都在 public/icons 下', () => {
   for (const [key, path] of Object.entries(icons)) {
     assert.ok(!key.startsWith('www.'), `键没规范化：${key}`);
     assert.equal(key, key.toLowerCase(), `键没小写：${key}`);
@@ -93,10 +92,10 @@ test('图标表里没有数据里已删掉的域名', (t) => {
   const hosts = new Set(links.map((l) => hostKey(l.url)));
   const stale = Object.keys(icons).filter((key) => !hosts.has(key));
   // 只报告不失败：删链接时忘了清理图标不该把 CI 卡住（下次 npm run icons 会自动 prune）
-  if (stale.length) t.diagnostic(`icons.json 里有过期域名：${stale.join(', ')}`);
+  if (stale.length) t.diagnostic(`icons 表里有过期域名：${stale.join(', ')}`);
 });
 
-test('link-status.json 只包含当前链接，且形态合法', (t) => {
+test('link_status 只包含当前链接，且形态合法', (t) => {
   const urls = new Set(links.map((l) => l.url));
   const stale = [];
   for (const [url, info] of Object.entries(status)) {

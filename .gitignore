@@ -8,3 +8,5 @@ dist/
 raw/
 .scratch/
 .cache/
+.env
+.env.*

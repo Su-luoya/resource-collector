@@ -2,7 +2,7 @@
 
 个人网络资源（书签）仓库 + 静态展示站，部署在 GitHub Pages。
 
-- 数据：`src/data/links.yaml`（唯一需要手改的文件）
+- 数据：Supabase（Postgres）。构建前 `npm run sync` 把它拉到 `.cache/links.json`，页面、校验、脚本都读这份缓存
 - 站点：Astro 静态构建，零客户端框架。首页是全部 95 条的卡片墙，另有四个分区页：`/scholar/`（学者主页）、`/data/`（数据）、`/packages/`（包与文档）、`/nav/`（导航与小工具）
 - 输出：`/`（全部）、四个分区页、`/links.json`（原始数据 API）、`/rss.xml`（最新 40 条）
 
@@ -10,7 +10,12 @@
 
 ## 加一条资源
 
-编辑 `src/data/links.yaml`，在文件末尾追加（顶层是数组，不需要分组排序，页面自己排）：
+两条路都行，改的是同一份云端数据：
+
+1. **本地预览站**（推荐）：`npm run dev` → 工具条「＋ 新增」，或浏览器地址栏的一键收录书签。写完点「发布」触发一次重建。
+2. **Supabase 表格**：网页上直接改 `links` 表（手机上也能改），改完在 Actions 里跑一次 Deploy（或等下一次周检）。
+
+字段（表格的列名就是这些）：
 
 ```yaml
 - title: "JAX"
@@ -77,20 +82,33 @@
 ```bash
 npm install
 npm run dev      # 本地预览 http://localhost:4321/resource-collector（带增删改）
-npm run check    # 校验 links.yaml（字段、去重、日期、分区/facets 白名单）
+npm run sync     # 从云端拉一次数据到 .cache/links.json（dev/build/check 都会自动先跑）
+npm run check    # 校验云端数据（字段、去重、日期、分区/facets 白名单）
 npm test         # 跑 test/ 下的单元测试与数据不变量（node --test）
 npm run typecheck # astro check：TS / Astro 类型检查
 npm run build    # 生成 dist/
 npm run preview  # 预览构建产物
-npm run links    # 探测全部链接 → link-status.json；安全的永久重定向同时修正 links.yaml
-npm run icons    # 下载各域名 favicon 到 public/icons/（加了新域名后跑一次）
+npm run links    # 探测全部链接 → link_status 表；安全的永久重定向同时改库里的 URL
+npm run icons    # 下载各域名 favicon 到 public/icons/（新域名进构建时 CI 会自动跑）
 ```
+
+## 环境变量
+
+写进本地 `.env`（已 git-ignore）与 GitHub 仓库 Secrets（名字相同）：
+
+| 变量 | 用途 |
+|---|---|
+| `SUPABASE_URL` | 项目地址 `https://<ref>.supabase.co` |
+| `SUPABASE_ANON_KEY` | 只读，构建与预览站读数据用 |
+| `SUPABASE_SECRET_KEY` | 可写，dev 编辑与周检写库用；只在本地与 Actions secrets 里出现，绝不进前端 |
+
+表结构在 `supabase/schema.sql`（三张表 + 行级安全：匿名只有 SELECT，写只走 secret key）。
 
 ## 代码结构
 
 ```
 src/
-  data/            links.yaml（事实源）、taxonomy.json（分区与分类词表）、icons.json、link-status.json
+  data/            taxonomy.json（分区与分类词表）；数据本身在云端，构建时落到 .cache/
   lib/
     links.ts       读词表与数据、分区过滤、计数、排序、搜索文本、徽标文案、图标查询（服务端用）
     site.ts        site / base 的单一来源，页面与 rss 都从这里取
@@ -127,7 +145,7 @@ scripts/           validate.mjs（check）、fetch-icons.mjs、check-links.mjs
 - **两步确认**：真正的破坏性动作（如「放弃本批草稿」）不弹原生 `confirm`，而是第一次点只把按钮文案改成「确认…」，4 秒内再点才执行。
 - **⌘K 命令面板**：列出新增、批量导入、链接维护、发布、聚焦搜索与重新加载；`↑↓` 选择、`Enter` 执行、`Esc` 关闭。表单里 `⌘Enter` 直接保存。
 - **链接维护**：集中列出首次出现的 `fail` 与需要人工确认的重定向，按失效优先排序。可以打开原站、单条复查、采用新地址或编辑替代地址；`warn` 仍只显示卡片角标。采用或修改 URL 时会校验重复，并同步清理旧体检状态。
-- **发布**：先弹发布预览，按新增 / 删除 / 修改分组列出具体条目（改 URL 且标题唯一时算「修改」，会显示前后值），再提示体检状态与图标变化。确认后对话框不关，按「检查 → 补图标 → 提交 → 推送」四步实时打勾，补图标那一步显示「3/24 个域名」并可展开日志；关掉对话框任务仍在跑，工具条会显示当前步骤；即使 Vite 因为图标落盘重载了页面，这个任务的进度（含已完成的结果）也会自动接回来。只把 `src/data/links.yaml`、`src/data/link-status.json`、`src/data/icons.json`、`public/icons/` 的改动提交，再推送当前分支到 `origin` 的同名分支。推送包括该分支上所有尚未推送的提交。
+- **发布**：先弹发布预览，按新增 / 删除 / 修改分组列出具体条目（改 URL 且标题唯一时算「修改」，会显示前后值），再提示体检状态与图标变化。确认后对话框不关，按「同步 → 补图标 → 触发重建」三步实时打勾，补图标那一步显示「3/24 个域名」并可展开日志；关掉对话框任务仍在跑，工具条会显示当前步骤；即使 Vite 因为图标落盘重载了页面，这个任务的进度（含已完成的结果）也会自动接回来。发布不再碰 git：数据已经在库里，最后一步是 `gh workflow run deploy.yml`，约 1 分钟后线上更新。
 - **重试推送**：如果提交成功但推送失败，刷新后仍能看到待推送状态。没有新数据改动时，重试只推送已有提交，不抓图标、不重复提交。工具条按最近一次 fetch / push 的本地记录判断同步状态；远端若已更新，先在终端同步，不会自动合并或强推。
 
 ## 浏览页上的两个小工具（线上也有）
@@ -135,11 +153,11 @@ scripts/           validate.mjs（check）、fetch-icons.mjs、check-links.mjs
 - **最近 7 天**：库里有最近 7 天新增的条目时，顶部会出现一条「最近 7 天新增 N 条 · 只看这些」，点一下只显示这些，再点恢复。窗口是滚动的 7 天，不是自然周。
 - **搜索高亮**：搜索框里输入的词在标题与简介里命中时包一层 `<mark>`；纯子串匹配，不做分词，也不影响筛选结果。
 
-改动一律写回 `src/data/links.yaml`，它仍然是唯一事实源；写盘后 Vite 会让模块失效，页面自动刷新。
+改动一律经 `api/edit` 写回云端 `links` 表（写前整表校验，失败就一个字节都不写），成功后 `refreshCache` 刷新 `.cache/links.json`，页面随即是新的。
 
-**这套东西只在 `npm run dev` 里存在**：`src/middleware.ts` 的 `/api/*` 端点首行 `if (!import.meta.env.DEV) return next()`，前端逻辑用 `import.meta.env.DEV` + 动态 `import('../dev/editor')` 包着，构建时整块被摇掉。已验证 `dist/` 里没有任何编辑层痕迹——线上站是纯静态只读的，要改数据只能在本机 dev 或直接编辑 YAML。
+**这套东西只在 `npm run dev` 里存在**：`src/middleware.ts` 的 `/api/*` 端点首行 `if (!import.meta.env.DEV) return next()`，前端逻辑用 `import.meta.env.DEV` + 动态 `import('../dev/editor')` 包着，构建时整块被摇掉。已验证 `dist/` 里没有任何编辑层痕迹——线上站是纯静态只读的，要改数据只能在本机 dev，或直接在 Supabase 表格里改再触发一次重建。
 
-新增一个**新域名**的条目时，图标不会自动存在；点「发布」时它会先跑 `npm run icons` 补齐缺的 favicon，再一起提交。取不到图标的域名会记进 `.cache/icon-misses.json`（git-ignored），30 天内不再重试——发布里最贵的二十多秒几乎都花在反复重试这些站点上；想手动再试一次就 `npm run icons -- --force`。
+新增一个**新域名**的条目时，图标不会自动存在；发布时会先跑 `npm run icons` 补齐缺的 favicon。取不到图标的域名在 `icons` 表里记下时间（`file` 为空），30 天内不再重试——发布里最贵的二十多秒几乎都花在反复重试这些站点上；想手动再试一次就 `npm run icons -- --force`。
 
 ## 部署
 
@@ -154,7 +172,7 @@ scripts/           validate.mjs（check）、fetch-icons.mjs、check-links.mjs
 `.github/workflows/link-check.yml` 每周一自动探测所有 URL，把结果写入 `src/data/link-status.json`。
 返回 401/403/405/429 视为 `warn`（要登录或反爬），其余非 2xx/3xx 视为 `fail`，卡片上会出现对应角标。重定向逐跳手动跟随，因此能保留状态码链，而不只是最终地址。
 
-只有同时满足「每一跳都是 301/308、最终 HTTPS 2xx、主机名不变、新地址未占用」时，脚本才会自动更新 `src/data/links.yaml`。临时/混合、跨主机重定向不自动改；这些和 `fail` 会进入本地预览站的「链接维护」面板。工作流若改了 URL，会先跑 `check`、全部测试、类型检查与构建，再把两个数据文件直接提交并推送到 `master`；提交正文带 URL 变更 diff。
+只有同时满足「每一跳都是 301/308、最终 HTTPS 2xx、主机名不变、新地址未占用」时，脚本才会自动改库里的 URL。临时/混合、跨主机重定向不自动改；这些和 `fail` 会进入本地预览站的「链接维护」面板。周检结束后把结果写进 `link_status` 表，再触发一次重建让状态上线——不再提交任何文件。
 
 ## 私有链接
 

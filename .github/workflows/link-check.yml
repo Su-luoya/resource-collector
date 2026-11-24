@@ -6,11 +6,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  actions: write # 周检结束后触发一次重建
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -18,30 +24,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Probe links
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm run sync
+      - name: Probe links and write results
         run: node scripts/check-links.mjs
-      - name: Verify automatic fixes
-        run: |
-          if [[ -n "$(git status --porcelain src/data/links.yaml)" ]]; then
-            npm run check
-            npm test
-            npm run typecheck
-            npm run build
-          fi
-      - name: Commit status and safe redirects
-        run: |
-          if [[ -n "$(git status --porcelain src/data/link-status.json src/data/links.yaml)" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/data/links.yaml src/data/link-status.json
-            if [[ -n "$(git diff --cached --name-only -- src/data/links.yaml)" ]]; then
-              git commit -m "fix: 自动修复永久重定向" -m "$(git diff --cached --unified=0 -- src/data/links.yaml)"
-            else
-              git commit -m "chore: 更新链接可用性检查结果"
-            fi
-            git push origin HEAD:master
-          else
-            echo "状态无变化，跳过提交"
-          fi
+      - name: Trigger rebuild so new statuses show up
+        run: gh workflow run deploy.yml --ref master

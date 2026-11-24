@@ -1,8 +1,6 @@
-import raw from '../data/links.yaml?raw';
-import statusRaw from '../data/link-status.json?raw';
-import iconsJson from '../data/icons.json';
+import cache from '../../.cache/links.json';
 import taxonomy from '../data/taxonomy.json';
-import { hostKey, parseLinks, validateRows } from './link-data.mjs';
+import { hostKey, validateRows } from './link-data.mjs';
 import { sortLinks } from './ordering.mjs';
 import { slugMap } from './slug.mjs';
 import { base } from './site';
@@ -62,9 +60,13 @@ export const SECTION_LABEL: Record<string, string> = Object.fromEntries(
   SECTIONS.map((s) => [s.id, s.label]),
 );
 
-const rows = parseLinks(raw);
+/**
+ * 数据来自 `.cache/links.json`，由 `npm run sync` 从 Supabase 拉下来（prebuild / predev 自动跑）。
+ * 库是唯一事实源，所以这里不再解析 YAML，也不再容忍坏数据：直接在这里把不合规的行拦住。
+ */
+const rows = cache.links as unknown as Resource[];
 const { errors } = validateRows(rows, taxonomy);
-if (errors.length) throw new Error(`links.yaml 校验未通过：\n${errors.join('\n')}`);
+if (errors.length) throw new Error(`云端数据校验未通过：\n${errors.join('\n')}`);
 export const links: Resource[] = sortLinks(rows) as Resource[];
 
 /** 某个分区里的条目，排序规则与首页一致 */
@@ -130,16 +132,11 @@ export const facetsFor = (sid: string, rows: Resource[] = sectionLinks(sid)): Fa
   }));
 };
 
-/** 本地图标表：规范化域名 → public 下的相对路径（scripts/fetch-icons.mjs 生成） */
-export const icons = iconsJson as Record<string, string>;
+/** 图标表：host → public 下的相对路径，由 scripts/fetch-icons.mjs 写好并同步进库 */
+export const icons = cache.icons as Record<string, string>;
 export const iconFor = (host: string): string | undefined => icons[host];
 
-let statuses: Record<string, LinkStatus> = {};
-try {
-  statuses = JSON.parse((statusRaw as string) || '{}');
-} catch {
-  statuses = {};
-}
+const statuses = (cache.status ?? {}) as Record<string, LinkStatus>;
 export const statusOf = (url: string): LinkStatus | undefined => statuses[url];
 
 /** 域名键：去掉 www. 与小写化，与 scripts/fetch-icons.mjs 用同一份规则 */

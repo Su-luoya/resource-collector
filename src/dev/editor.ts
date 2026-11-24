@@ -188,7 +188,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     }
   }
 
-  /** 写盘后 Vite 会立即让 links.yaml 的模块失效（实测 150ms 内新页面已是新数据），稍等整页刷新即可 */
+  /** 写库后缓存已刷新；Vite 会让页面模块失效，稍等整页刷新即可 */
   const refresh = () => setTimeout(() => location.reload(), 150);
 
   /** 写盘会让页面立刻重载，Toast 来不及看。把提示存进 sessionStorage，重载后补弹。 */

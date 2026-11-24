@@ -4,12 +4,13 @@
 // api/batch-add（整批校验后一次写入）与 api/publish-preview（发布前结构化差异）。
 // batch-meta 的抓取分支需要联网，这里只测「被跳过」的分支与上限，全部离线。
 import { test } from 'node:test';
+import { startFakeCloud } from './helpers/cloud.mjs';
+import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dev } from 'astro';
-import { parseLinks } from '../src/lib/link-data.mjs';
 import { runTask } from './helpers/task.mjs';
 
 test('批量导入、相似候选与发布前差异：都只经 dev 接口，写盘一次到位', async (t) => {
@@ -38,6 +39,8 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
     'src/lib/link-data.mjs',
+    'src/lib/cloud.mjs',
+    'src/lib/cloud-sync.mjs',
     'src/lib/link-maintenance.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',
@@ -51,15 +54,21 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
   }
   writeFileSync('src/pages/index.astro', 'fixture');
   writeFileSync('public/icons/.gitkeep', '');
-  writeFileSync('src/data/icons.json', '{}\n');
-  writeFileSync('src/data/link-status.json', '{}\n');
-  const header = '# 头注释：这个文件按时间追加，页面自己排序\n';
-  const entry = (title, url) =>
-    `- {title: ${title}, url: ${url}, section: [nav], facets: {nav: {kind: tool}}, desc: ${title}, added: 2026-01-01}`;
-  writeFileSync(
-    'src/data/links.yaml',
-    header + [entry('A', 'https://a.example.com/p'), entry('B', 'https://b.example.com')].join('\n') + '\n',
-  );
+  const entry = (title, url) => ({
+    title,
+    url,
+    section: ['nav'],
+    facets: { nav: { kind: 'tool' } },
+    desc: title,
+    added: '2026-01-01',
+  });
+  // 数据源现在是云端：缓存 = 读，published.json = 「上一次发布时的样子」
+  const seed = [entry('A', 'https://a.example.com/p'), entry('B', 'https://b.example.com/')];
+  writeCache({ links: seed, status: [], icons: {}, syncedAt: new Date().toISOString() });
+  writeFileSync('.cache/published.json', JSON.stringify({ links: seed, at: new Date().toISOString() }));
+  const cloud = await startFakeCloud({ links: seed });
+  cloud.use();
+  t.after(() => cloud.close());
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git('init', '-b', 'main');
   git('config', 'user.name', 'Test');
@@ -77,7 +86,7 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
       });
       return { http: response.status, ...(await response.json()) };
     };
-    const urls = () => parseLinks(readFileSync('src/data/links.yaml', 'utf8')).map((row) => row.url);
+    const urls = () => readCache().links.map((row) => row.url);
 
     // 相似候选：清理建议与候选都只读不写。
     const dup = await api('duplicates', { url: 'https://a.example.com/p/?utm_source=x' });
@@ -146,11 +155,11 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.equal(written.ok, true, written.message);
     assert.deepEqual(urls(), [
       'https://a.example.com/p',
-      'https://b.example.com',
+      'https://b.example.com/',
       'https://c.example.com/',
       'https://d.example.com/',
     ]);
-    assert.ok(readFileSync('src/data/links.yaml', 'utf8').startsWith(header), '头注释必须保留');
+    assert.ok(!existsSync('.cache/links.yaml'), '不该再有 YAML 了');
 
     // 发布前预览：结构化列出新增，而不是只给个数。
     const preview = await api('publish-preview');
@@ -158,18 +167,17 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.deepEqual(preview.added.map((row) => row.url), ['https://c.example.com/', 'https://d.example.com/']);
     assert.deepEqual(preview.removed, []);
     assert.deepEqual(preview.changed, []);
-    assert.equal(preview.statusChanged, false);
 
     // 改一条 URL：同名唯一时算「修改」，不是删一条加一条。
     const moved = await api('edit', {
       action: 'update',
-      url: 'https://b.example.com',
+      url: 'https://b.example.com/',
       newUrl: 'https://b2.example.com',
     });
     assert.equal(moved.ok, true, moved.message);
     const after = await api('publish-preview');
     assert.equal(after.changed.length, 1);
-    assert.equal(after.changed[0].before.url, 'https://b.example.com');
+    assert.equal(after.changed[0].before.url, 'https://b.example.com/');
     assert.equal(after.changed[0].after.url, 'https://b2.example.com/');
     assert.deepEqual(after.removed, []);
   } finally {

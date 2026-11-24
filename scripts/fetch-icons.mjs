@@ -1,22 +1,26 @@
 #!/usr/bin/env node
-// 把每个域名的 favicon 下载到 public/icons/，生成 src/data/icons.json。
+// 把每个域名的 favicon 下载到 public/icons/，并把「域名 → 文件」写进云端 icons 表。
 // 好处：页面不依赖第三方图标服务（国内访问稳定），也不怕源站删图标。
 // 用法：node scripts/fetch-icons.mjs [--force]
 //
-// 图标表的键是「规范化域名」（去掉 www.、小写，见 src/lib/link-data.mjs 的 hostKey），
+// 键是「规范化域名」（去掉 www.、小写，见 src/lib/link-data.mjs 的 hostKey），
 // 与页面查图标用的是同一把键——所以 www.nber.org 与 nber.org 共用一份图标。
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+// 取不到的域名记下时间，30 天内不再重试：发布里最贵的时间都花在这上面。
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { hostKey, parseLinks } from '../src/lib/link-data.mjs';
-import { describeMiss, isRetryable, MISS_DAYS, pruneMisses } from '../src/lib/icon-cache.mjs';
+import { hostKey } from '../src/lib/link-data.mjs';
+import { describeMiss, isRetryable, MISS_DAYS } from '../src/lib/icon-cache.mjs';
+import { clientFor, readCache, refreshCache } from '../src/lib/cloud-sync.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const force = process.argv.includes('--force');
-const rows = parseLinks(readFileSync(resolve(root, 'src/data/links.yaml'), 'utf8'));
+const cache = readCache();
+const rows = cache.links;
 const outDir = resolve(root, 'public/icons');
-const mapFile = resolve(root, 'src/data/icons.json');
 mkdirSync(outDir, { recursive: true });
+
+const client = clientFor({ write: true });
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -49,36 +53,14 @@ const EXT = {
 
 const slug = (host) => host.replace(/[^a-z0-9.-]/gi, '_');
 
-/** 老版本的键带着 www.，读进来先迁移到规范化键：文件没动过，不用重抓 */
-const loadMap = () => {
-  if (!existsSync(mapFile)) return {};
-  const old = JSON.parse(readFileSync(mapFile, 'utf8'));
-  const map = {};
-  for (const [rawKey, path] of Object.entries(old)) {
-    const key = hostKey(rawKey);
-    if (key && !map[key]) map[key] = path;
-  }
-  return map;
-};
-
-/** 取不到图标的域名记在这里，30 天内不再重试（发布里最贵的时间都花在这上面） */
-const missFile = resolve(root, '.cache/icon-misses.json');
-const loadMisses = () => {
-  if (!existsSync(missFile)) return {};
-  try {
-    return JSON.parse(readFileSync(missFile, 'utf8'));
-  } catch {
-    return {};
-  }
-};
-const saveMisses = (misses) => {
-  mkdirSync(dirname(missFile), { recursive: true });
-  writeFileSync(missFile, `${JSON.stringify(pruneMisses(misses, new Set(hosts.keys())), null, 2)}\n`);
-};
-
-const misses = loadMisses();
-
-const map = loadMap();
+// 现有映射与失败记录都从库里读：换台机器、换次 CI 都接着上次的进度走
+const iconRows = await client.listIcons();
+const map = {};
+const misses = {};
+for (const row of iconRows) {
+  if (row.file) map[row.host] = row.file;
+  else if (row.missed_at) misses[row.host] = row.missed_at;
+}
 
 async function get(url, timeout = 10_000) {
   const ctrl = new AbortController();
@@ -135,8 +117,6 @@ async function discover(hostname, key) {
 }
 
 const queue = [...hosts.keys()];
-
-// 已拿到图标的不再抓；已知取不到的也跳过（--force 无视缓存全量重试）
 const planned = queue.filter((key) => {
   const existing = map[key];
   if (!force && existing && existsSync(resolve(root, 'public', existing))) return false;
@@ -159,27 +139,28 @@ async function worker() {
       continue;
     }
     const saved = await discover(hosts.get(key), key);
+    const now = new Date().toISOString();
     if (saved) {
       map[key] = saved;
       delete misses[key];
       console.log(`✓ ${key} → ${saved}`);
+      await client.upsertIcons([{ host: key, file: saved, missed_at: null }]);
     } else {
       delete map[key];
-      misses[key] = new Date().toISOString();
+      misses[key] = now;
       console.log(`✗ ${key} 取不到图标，用首字母占位`);
+      await client.upsertIcons([{ host: key, file: null, missed_at: now }]);
     }
-    saveMisses(misses);
   }
 }
 await Promise.all(Array.from({ length: 6 }, worker));
-saveMisses(misses);
 
-// 数据里已经删掉的域名不再留在表里
+// 数据里已经删掉的域名不再留在表里（库里那些行留着无害，但别让它们进映射）
 for (const key of Object.keys(map)) if (!hosts.has(key)) delete map[key];
 
-writeFileSync(mapFile, `${JSON.stringify(Object.fromEntries(Object.entries(map).sort()), null, 2)}\n`);
+await refreshCache(client);
 
 const referenced = new Set(Object.values(map).map((path) => path.replace(/^icons\//, '')));
 const orphans = readdirSync(outDir).filter((name) => !referenced.has(name));
 if (orphans.length) console.log(`\n注意：public/icons 里有 ${orphans.length} 个没人引用的文件：${orphans.join(', ')}`);
-console.log(`\n完成：${Object.keys(map).length}/${hosts.size} 个域名有本地图标 → src/data/icons.json`);
+console.log(`\n完成：${Object.keys(map).length}/${hosts.size} 个域名有本地图标 → icons 表`);

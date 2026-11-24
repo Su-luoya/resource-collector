@@ -1,11 +1,11 @@
 # 本项目约定
 
-个人资源库（书签收藏）+ GitHub Pages 展示站。数据文件是唯一事实源，页面全部由它生成。
+个人资源库（书签收藏）+ GitHub Pages 展示站。数据在 Supabase（Postgres），构建时拉成 `.cache/links.json`，页面全部由它生成。
 
 ## 日常动作：用户发来新链接时
 
-0. 用户可能已经自己在本地预览站里增删了：`npm run dev` → http://localhost:4321/resource-collector/ ，左下浮动工具条有「＋ 新增 / 发布」，每张卡片悬停出 `✎` / `✕`。那些操作直接改 `src/data/links.yaml`（唯一事实源），所以动手前先 `git status --short src/data/links.yaml` 看一眼有没有他的未提交改动，别覆盖。
-1. 打开 `src/data/links.yaml`，在**文件末尾追加**（不要按分区/分类分组重排，写入顺序无所谓，页面会自己排序）：
+0. 用户可能已经自己在本地预览站里增删了：`npm run dev` → http://localhost:4321/resource-collector/ ，左下浮动工具条有「＋ 新增 / 发布」，每张卡片悬停出 `✎` / `✕`。那些操作**直接写云端**，本地只留一份缓存（`.cache/links.json`，git-ignored）。动手前先 `npm run sync` 拉一次最新数据，再按缓存内容判断，别覆盖用户刚改的东西。
+1. 写入走 dev 接口（`api/edit`，`action: add`），或告诉用户去 Supabase 表格里直接加。字段：
    ```yaml
    - title: "名称"
      url: https://...
@@ -21,8 +21,8 @@
        - 关键结论
    ```
 2. `desc` 只写用户能验证的事实（官网自述、实际页面内容）。**不要编造**作者、机构、功能。抓不到页面内容就先问用户，或写保守描述。
-3. 只有新域名的域名才需要 `npm run icons` 重新抓图标（已有域名会跳过）。
-4. `npm run check && npm run build`，然后 commit + push。推送即自动部署。
+3. 新域名的图标由发布时的 `npm run icons` 或 CI 自动补，不需要手动跑。
+4. `npm run check && npm run build` 验证，然后 commit + push 代码（数据不在 git 里）。改完数据后点「发布」或跑 `gh workflow run deploy.yml` 让线上更新。
 
 ## 不要做
 
@@ -37,13 +37,14 @@
 - 不改 `astro.config.mjs` 的 `base`，除非仓库改名（改了两处要同步：`site` + `base`）。
 - 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件），字体走系统栈。
 - dev 编辑层必须留在 dev 里：markup 走 `import.meta.env.DEV` 条件渲染、逻辑走动态 `import('../dev/editor')`（`task` / `toast` / `command-palette` 同理，由 editor 再动态引入），`npm run build` 后 `dist/` 里不许出现 `dev-dialog` / `api/edit` 等任何痕迹（已验证）。
-- 不把这套接进线上 Pages：那是纯静态站，没有进程可写盘。线上只读，改数据只能在本机 dev 或直接改 YAML。
+- 不把这套接进线上 Pages：那是纯静态站，没有进程可写盘。线上只读，改数据只能在本机 dev 或在 Supabase 表格里改（改完触发一次重建）。
 - 写接口只放 `src/middleware.ts` 且首行 `if (!import.meta.env.DEV) return next()`；不要新增其他能写盘的入口。
 - AI 生成不得用页面之外的知识：`api/ai-draft` 只把抓到的正文交给模型，越出词表的分区/分类与正文里找不到的「依据」必须被丢弃；默认只填空白字段，不覆盖已写内容。
 - 长任务一律走任务表：`api/publish` / `api/batch-meta` 立即返回 `{ ok, id }`，进度靠 `GET api/task?id=` 轮询快照（步骤 + `progress` + `log`）。不要改回阻塞式等待——前端进度条只认这个契约。
 ## 关键文件
 
-- `src/data/links.yaml` — 数据（唯一事实源）
+- `supabase/schema.sql` — 表结构（links / link_status / icons + RLS：宓名只读，写只走 secret key）
+- `src/lib/cloud.mjs` / `cloud-sync.mjs` — 行 ↔ 内部对象的转换、PostgREST 封装、`.cache/links.json` 的拉取与写入
 - `src/data/taxonomy.json` — 分区与分类词表：`sections`（分区 → 各自的 facets 轴与取值，`badge` 指定卡片徽标用哪条轴）
 - `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序（转出 `compareNewest`/`comparePinned`）、搜索文本、图标表读取
 - `src/lib/ordering.mjs` — 卡片排序规则：置顶优先 + 时间倒序、同日期按标题；浏览页与 `filter.ts` 的卡片重排共用同一份实现
@@ -57,7 +58,7 @@
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`（图标脚本的失败缓存规则在 `src/lib/icon-cache.mjs`）
 - `src/middleware.ts` — dev-only 的 `/api/meta|ai-draft|batch-meta|batch-add|duplicates|duplicates-scan|import-bookmarks|edit|status|publish-preview|maintenance|recheck|publish|task`（构建与线上完全不生效；`api/meta` 的响应里带 `rules` 落点建议）
 - `src/lib/dev-task.mjs` — 长任务状态机（步骤 / 子项进度 / 日志 / 结果 / 清理），`middleware.ts` 与 `src/dev/task.ts` 共用同一份快照形状
-- `src/lib/link-data.mjs` — YAML 序列化 / 解析 / 校验（section + 嵌套 facets）的共用实现（`scripts/validate.mjs` 也用它，两边规则不会漂移）
+- `src/lib/link-data.mjs` — 键规范化、URL 规范化与行校验（section + 嵌套 facets）的共用实现（`src/middleware.ts` 与 `scripts/validate.mjs` 都用它，两边规则不会漂移）
 - `src/lib/link-maintenance.mjs` — 链接探测、永久重定向自动修复与维护待办，周检脚本和 dev 单条复查共用
 - `src/lib/link-quality.mjs` — 新增/编辑时的相似重复候选、跟踪参数清理建议，以及全库查重 `scanDuplicates`（都只提示，不改数据）
 - `src/lib/icon-cache.mjs` — 图标失败缓存规则（取不到图标的域名 30 天内不重试，`--force` 可强刷）

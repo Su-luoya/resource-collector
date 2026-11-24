@@ -1,4 +1,6 @@
 import { test } from 'node:test';
+import { startFakeCloud } from './helpers/cloud.mjs';
+import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -54,6 +56,8 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
     'src/lib/link-data.mjs',
+    'src/lib/cloud.mjs',
+    'src/lib/cloud-sync.mjs',
     'src/lib/link-maintenance.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',
@@ -66,29 +70,20 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     cpSync(join(root, file), file);
   }
   writeFileSync('src/pages/index.astro', 'fixture');
-  const entry = (title, url) =>
-    `- {title: ${title}, url: ${url}, section: [nav], facets: {nav: {kind: tool}}, desc: ${title}, added: 2026-01-01}`;
-  writeFileSync(
-    'src/data/links.yaml',
-    `${[
-      entry('Redirect', redirect),
-      entry('Failed', failed),
-      entry('Warn', warn),
-      entry('Occupied', occupied),
-    ].join('\n')}\n`,
-  );
-  writeFileSync(
-    'src/data/link-status.json',
-    `${JSON.stringify(
-      {
-        [redirect]: { status: 'redirect', code: 200, final, redirects: [302], checked: '2026-08-01' },
-        [failed]: { status: 'fail', code: 404, checked: '2026-08-01' },
-        [warn]: { status: 'warn', code: 403, checked: '2026-08-01' },
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  const link = (title, url) => ({ title, url, section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: title, added: '2026-01-01' });
+  const cloud = await startFakeCloud({ links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)] });
+  cloud.use();
+  t.after(() => cloud.close());
+  writeCache({
+    syncedAt: new Date().toISOString(),
+    links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)],
+    status: {
+      [redirect]: { url: redirect, status: 'redirect', code: 200, final, checked: '2026-08-01' },
+      [failed]: { url: failed, status: 'fail', code: 404, checked: '2026-08-01' },
+      [warn]: { url: warn, status: 'warn', code: 403, checked: '2026-08-01' },
+    },
+    icons: {},
+  });
 
   const server = await dev({ root: repo, configFile: false, logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
   try {
@@ -100,8 +95,8 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
       });
       return { http: response.status, ...(await response.json()) };
     };
-    const statuses = () => JSON.parse(readFileSync('src/data/link-status.json', 'utf8'));
-    const urls = () => parseLinks(readFileSync('src/data/links.yaml', 'utf8')).map((row) => row.url);
+    const statuses = () => Object.fromEntries([...cloud.tables.link_status.values()].map((row) => [row.url, row]));
+    const urls = () => cloud.urls();
 
     const initial = await api('maintenance');
     assert.equal(initial.ok, true);
@@ -134,7 +129,7 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.equal(urls().filter((url) => url === occupied).length, 1);
 
     // 笔记与待看：部分字段的更新不能把它们洗掉（之前 pin 就踩过这个坑）
-    const rowNow = () => parseLinks(readFileSync('src/data/links.yaml', 'utf8')).find((row) => row.url === final);
+    const rowNow = () => readCache().links.find((row) => row.url === final);
     assert.equal((await api('edit', { action: 'update', url: final, note: '- 结论：留着', read: false })).ok, true);
     assert.equal(rowNow().note, '- 结论：留着');
     assert.equal(rowNow().read, false);

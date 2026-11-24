@@ -17,6 +17,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -24,9 +28,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # check 的 precheck 会先 npm run sync，把云端数据拉成 .cache/links.json
       - run: npm run check
       - run: npm test
       - run: npm run typecheck
+      # 新域名的图标在 CI 里抓：抓到的文件只进构建产物，不需要提交回仓库
+      - name: Fetch icons
+        run: npm run icons
+        continue-on-error: true
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

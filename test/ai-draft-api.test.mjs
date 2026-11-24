@@ -3,6 +3,8 @@
 // 用假 pi 二进制（PI_BIN 指向一个 sh 脚本）代替真模型，本地 http 服务当目标页，
 // 所以整条链路（抓正文 → 组装提示词 → 子进程 → 解析过滤 → 与表单合并）都是真跑，且完全离线。
 import { test } from 'node:test';
+import { startFakeCloud } from './helpers/cloud.mjs';
+import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -69,6 +71,8 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
     'src/lib/link-rules.mjs',
     'src/lib/bookmarks-html.mjs',
     'src/lib/link-data.mjs',
+    'src/lib/cloud.mjs',
+    'src/lib/cloud-sync.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',
     'src/lib/icon-cache.mjs',
@@ -79,11 +83,14 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
   }
   writeFileSync('src/pages/index.astro', 'fixture');
   writeFileSync('public/icons/.gitkeep', '');
-  writeFileSync('src/data/icons.json', '{}\n');
-  writeFileSync('src/data/link-status.json', '{}\n');
-  const yaml =
-    '# 头注释\n- {title: A, url: https://a.example.com, section: [nav], facets: {nav: {kind: tool}}, desc: A, added: 2026-01-01}\n';
-  writeFileSync('src/data/links.yaml', yaml);
+  const cloud = await startFakeCloud({
+    links: [
+      { url: 'https://a.example.com', title: 'A', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01', pin: false, unread: false },
+    ],
+  });
+  cloud.use();
+  t.after(() => cloud.close());
+  writeCache({ syncedAt: new Date().toISOString(), links: await cloud.rows(), status: {}, icons: {} });
 
   const server = await dev({ root: repo, configFile: false, logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
   try {
@@ -145,7 +152,7 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
     assert.equal(broken.http, 502);
     assert.match(broken.message, /调用 pi 失败/);
 
-    assert.equal(readFileSync('src/data/links.yaml', 'utf8'), yaml);
+    assert.equal(readCache().links.length, 1, 'AI 生成只读，不能写库');
   } finally {
     await server.stop();
   }

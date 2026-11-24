@@ -3,10 +3,12 @@
 // 用法：npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { describeMiss, isRetryable, MISS_DAYS, pruneMisses } from '../src/lib/icon-cache.mjs';
+import { startFakeCloud } from './helpers/cloud.mjs';
+import { writeCache } from '../src/lib/cloud-sync.mjs';
 
 const DAY = 86_400_000;
 const now = Date.parse('2026-03-01T00:00:00.000Z');
@@ -41,24 +43,33 @@ test('已知取不到的域名：脚本跳过且不联网，图标表保持不�
   const tmp = mkdtempSync(join(scratch, 'icons-test-'));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
 
-  for (const dir of ['scripts', 'src/lib', 'src/data', 'public/icons']) mkdirSync(join(tmp, dir), { recursive: true });
+  for (const dir of ['scripts', 'src/lib', 'src/data', 'public/icons', '.cache']) mkdirSync(join(tmp, dir), { recursive: true });
   cpSync(join(root, 'scripts/fetch-icons.mjs'), join(tmp, 'scripts/fetch-icons.mjs'));
-  for (const file of ['link-data.mjs', 'icon-cache.mjs']) {
+  for (const file of ['link-data.mjs', 'icon-cache.mjs', 'cloud.mjs', 'cloud-sync.mjs']) {
     cpSync(join(root, 'src/lib', file), join(tmp, 'src/lib', file));
   }
-  writeFileSync(
-    join(tmp, 'src/data/links.yaml'),
-    '- {title: A, url: https://miss.example.com/, section: [nav], facets: {nav: {kind: tool}}, desc: A, added: 2026-01-01}\n',
-  );
-  writeFileSync(join(tmp, 'src/data/icons.json'), '{}\n');
-  mkdirSync(join(tmp, '.cache'));
-  writeFileSync(
-    join(tmp, '.cache/icon-misses.json'),
-    JSON.stringify({ 'miss.example.com': new Date().toISOString() }),
-  );
+  // 失败记录现在存在图标表里（file 为空 + missed_at），不再是本地文件
+  const cloud = await startFakeCloud({
+    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
+    icons: [{ host: 'miss.example.com', file: null, missed_at: new Date().toISOString() }],
+  });
+  cloud.use();
+  writeCache({
+    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
+    status: [],
+    icons: {},
+    syncedAt: new Date().toISOString(),
+  }, join(tmp, '.cache/links.json'));
 
-  const out = execFileSync(process.execPath, ['scripts/fetch-icons.mjs'], { cwd: tmp, encoding: 'utf8' });
+  // 假云跟测试同一个进程：必须用 spawn（异步）而不是 execFileSync，否则事件循环被堵住、请求永远等不到响应
+  const out = await new Promise((done) => {
+    const child = spawn(process.execPath, ['scripts/fetch-icons.mjs'], { cwd: tmp, env: process.env });
+    let text = '';
+    child.stdout.on('data', (chunk) => (text += chunk));
+    child.on('close', () => done(text));
+  });
+  await cloud.close();
   assert.match(out, /miss\.example\.com（今天取不到，30 天内不重试）/);
   assert.match(out, /0 个待抓/);
-  assert.deepEqual(JSON.parse(readFileSync(join(tmp, 'src/data/icons.json'), 'utf8')), {});
+  assert.deepEqual(cloud.iconRows().map((row) => row.file), [null]);
 });

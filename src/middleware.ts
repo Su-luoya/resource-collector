@@ -20,10 +20,10 @@
 //   POST  api/batch-meta { urls }                      → 启动批量抓取任务，立即返回 { id }
 //   GET   api/task?id=…                                 → 任务进度快照；不带 id 时只列正在跑的任务
 import { defineMiddleware } from 'astro:middleware';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
-import { dumpLinks, parseLinks, validateRows, diffRows, diffRowDetails, urlKey } from './lib/link-data.mjs';
+import { validateRows, diffRows, diffRowDetails, urlKey } from './lib/link-data.mjs';
 import { clean, extractMeta, htmlToText, normUrl } from './lib/dev-meta.mjs';
 import { buildPrompt, mergeDraft, parseDraft } from './lib/ai-draft.mjs';
 import { datedStatus, maintenanceTasks, probeLink } from './lib/link-maintenance.mjs';
@@ -31,12 +31,12 @@ import { cleanupUrl, findDuplicateCandidates, scanDuplicates } from './lib/link-
 import { suggestFor } from './lib/link-rules.mjs';
 import { parseBookmarks, tidyTitle } from './lib/bookmarks-html.mjs';
 import { createTaskStore } from './lib/dev-task.mjs';
+import { clientFor, refreshCache } from './lib/cloud-sync.mjs';
 import type { LinkStatus, Resource } from './lib/links';
 
 const ROOT = process.cwd();
-const DATA_REL = 'src/data/links.yaml';
-const STATUS_REL = 'src/data/link-status.json';
-const ICONS_REL = 'src/data/icons.json';
+const CACHE_REL = '.cache/links.json';
+const PUBLISHED_REL = '.cache/published.json';
 const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
 
@@ -49,40 +49,58 @@ const json = (body: unknown, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-const readRows = (): { raw: string; rows: Resource[] } => {
-  const raw = readFileSync(resolve(ROOT, DATA_REL), 'utf8');
-  return { raw, rows: parseLinks(raw) };
+/**
+ * 库是唯一事实源。dev 进程里留一份内存镜像，省掉每次请求都拉全表；
+ * 写入一律先写库，成功后再刷新镜像与 `.cache/links.json`，失败就什么都不改。
+ */
+const store: { rows: Resource[]; statuses: Record<string, LinkStatus>; loaded: boolean } = {
+  rows: [],
+  statuses: {},
+  loaded: false,
 };
 
-const readStatuses = (): Record<string, LinkStatus> =>
-  JSON.parse(readFileSync(resolve(ROOT, STATUS_REL), 'utf8'));
-
-const writeStatuses = (statuses: Record<string, LinkStatus>) => {
-  const target = resolve(ROOT, STATUS_REL);
-  const tmp = `${target}.${process.pid}.tmp`;
-  const sorted = Object.fromEntries(Object.entries(statuses).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(tmp, `${JSON.stringify(sorted, null, 2)}\n`);
-  renameSync(tmp, target);
+const loadStore = () => {
+  if (store.loaded) return store;
+  try {
+    const cache = JSON.parse(readFileSync(resolve(ROOT, CACHE_REL), 'utf8'));
+    store.rows = (cache.links ?? []) as Resource[];
+    store.statuses = (cache.status ?? {}) as Record<string, LinkStatus>;
+    store.loaded = true;
+  } catch {
+    throw new Error('没有 .cache/links.json：先跑 npm run sync 从云端拉一次数据');
+  }
+  return store;
 };
 
-// URL 真正换掉时清掉旧状态；仅规范化写法变化时保留并迁移状态。
-const syncEditedStatus = (from: string, to?: string) => {
-  if (from === to) return;
-  const statuses = readStatuses();
-  const previous = statuses[from];
-  delete statuses[from];
-  if (to) delete statuses[to];
-  if (to && previous && urlKey(from) === urlKey(to)) statuses[to] = previous;
-  writeStatuses(statuses);
-};
+const readRows = (): { raw: string; rows: Resource[] } => ({ raw: '', rows: loadStore().rows });
 
-const saveEdit = (rows: unknown[], raw: string, message: string) => {
+const readStatuses = (): Record<string, LinkStatus> => loadStore().statuses;
+
+/** 写库统一入口：先校验，再整表对齐，最后刷新缓存与镜像 */
+const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: string; to?: string }) => {
+  const rows = nextRows as Resource[];
   const { errors } = validateRows(rows, taxonomy());
   if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
-  const target = resolve(ROOT, DATA_REL);
-  const tmp = `${target}.tmp`;
-  writeFileSync(tmp, dumpLinks(rows, raw), 'utf8');
-  renameSync(tmp, target);
+  const client = clientFor({ write: true });
+  try {
+    await client.replaceLinks(rows);
+    if (sync && sync.from !== sync.to) {
+      const previous = store.statuses[sync.from];
+      await client.deleteStatus(sync.from);
+      delete store.statuses[sync.from];
+      if (sync.to) {
+        delete store.statuses[sync.to];
+        if (previous && urlKey(sync.from) === urlKey(sync.to)) {
+          store.statuses[sync.to] = previous;
+          await client.upsertStatus({ ...previous, url: sync.to });
+        }
+      }
+    }
+  } catch (error) {
+    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
+  }
+  store.rows = rows;
+  await refreshCache(client);
   return json({ ok: true, message, total: rows.length });
 };
 
@@ -191,34 +209,42 @@ const tail = (text: string, lines = 2) => text.trim().split('\n').slice(-lines).
 const tasks = createTaskStore();
 
 const PUBLISH_STEPS = [
-  { id: 'check', label: '检查分支与待发布改动' },
+  { id: 'sync', label: '从云端拉最新数据' },
   { id: 'icons', label: '补抓缺失图标' },
-  { id: 'commit', label: '提交数据' },
-  { id: 'push', label: '推送分支' },
+  { id: 'dispatch', label: '触发 GitHub Actions 重建' },
 ];
 
 const BATCH_STEPS = [{ id: 'fetch', label: '抓取页面标题与简介' }];
 
-/** 当前工作区里这些数据与图标文件是否有未提交改动 */
-const dataDirty = () => git(['status', '--porcelain', '--', DATA_REL, STATUS_REL, ICONS_REL, ICONS_DIR]) !== '';
+/**
+ * 「上次发布」的快照：每次触发重建时把当前数据写进 .cache/published.json。
+ * 用它与现数据对比，得出待发布的新增/删除/修改；不再依赖 git HEAD（库已经是事实源）。
+ */
+const readPublished = (): Resource[] => {
+  try {
+    return (JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8')).links ?? []) as Resource[];
+  } catch {
+    return [];
+  }
+};
 
-/** 与 HEAD 里的 links.yaml 对比，得出待发布的新增/删除/修改条数 */
-const pendingDiff = (rows: Resource[]) => {
-  const prevRaw = gitOr(['show', `HEAD:${DATA_REL}`]);
-  if (!prevRaw) return { added: rows.length, removed: 0, changed: 0 };
-  return diffRows(parseLinks(prevRaw), rows);
+const writePublished = (rows: Resource[]) => {
+  const target = resolve(ROOT, PUBLISHED_REL);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows }, null, 2)}\n`);
+};
+
+/** 与上次发布对比，得出待发布的新增/删除/修改条数 */
+const pendingDiff = (rows: Resource[]) => diffRows(readPublished(), rows);
+
+const hasPending = (rows: Resource[]) => {
+  const { added, removed, changed } = pendingDiff(rows);
+  return added + removed + changed > 0;
 };
 
 const handlePublishPreview = () => {
   const { rows } = readRows();
-  const prevRaw = gitOr(['show', `HEAD:${DATA_REL}`]);
-  const before = prevRaw ? parseLinks(prevRaw) : [];
-  return json({
-    ok: true,
-    ...diffRowDetails(before, rows),
-    statusChanged: git(['status', '--porcelain', '--', STATUS_REL]) !== '',
-    icons: git(['status', '--porcelain', '--', ICONS_REL, ICONS_DIR]).split('\n').filter(Boolean),
-  });
+  return json({ ok: true, ...diffRowDetails(readPublished(), rows) });
 };
 
 const handleDuplicates = async (request: Request) => {
@@ -461,7 +487,7 @@ const handleBatchAdd = async (request: Request) => {
   if (!input.length) return json({ ok: false, message: '没有待写入的草稿' }, 400);
   if (input.length > BATCH_LIMIT) return json({ ok: false, message: `每批最多 ${BATCH_LIMIT} 条` }, 400);
 
-  const { raw, rows } = readRows();
+  const { rows } = readRows();
   const occupied = new Set(rows.map((row) => urlKey(row.url)));
   const prepared = [];
   for (let index = 0; index < input.length; index++) {
@@ -492,7 +518,7 @@ const handleBatchAdd = async (request: Request) => {
     if (errors.length) return json({ ok: false, message: '草稿校验未通过', errors }, 400);
     return json({ ok: true, message: '草稿有效' });
   }
-  return saveEdit([...rows, ...prepared], raw, `已批量新增 ${prepared.length} 条资源`);
+  return applyEdit([...rows, ...prepared], `已批量新增 ${prepared.length} 条资源`);
 };
 
 /** 书签导入：书签里没有简介，占位文案写实情，导入后一概记为「待看」 */
@@ -517,7 +543,7 @@ const handleImportBookmarks = async (request: Request) => {
   if (body?.commit === true) {
     const input = Array.isArray(body?.rows) ? body.rows : [];
     if (!input.length) return json({ ok: false, message: '没有待导入的条目' }, 400);
-    const { raw, rows } = readRows();
+    const { rows } = readRows();
     const occupied = new Set(rows.map((row) => urlKey(row.url)));
     const prepared = [];
     const missing = [];
@@ -548,7 +574,7 @@ const handleImportBookmarks = async (request: Request) => {
       return json({ ok: false, message: `还有 ${missing.length} 条没选分区`, missing }, 400);
     }
     if (!prepared.length) return json({ ok: false, message: '这些条目都已存在，没新增' }, 409);
-    return saveEdit([...rows, ...prepared], raw, `已导入 ${prepared.length} 条（都标为待看）`);
+    return applyEdit([...rows, ...prepared], `已导入 ${prepared.length} 条（都标为待看）`);
   }
 
   const { rows } = readRows();
@@ -599,15 +625,14 @@ const handleEdit = async (request: Request) => {
   const target = normUrl(body.url);
   if (!target.url) return json({ ok: false, message: target.error }, 400);
 
-  const { raw, rows } = readRows();
+  const { rows } = readRows();
   const key = urlKey(target.url);
   const index = rows.findIndex((r) => r && urlKey(r.url) === key);
   const previous = rows[index];
   if (action === 'add' && previous) return json({ ok: false, message: `这条已在库里：${previous.url}` }, 409);
   if (action !== 'add' && !previous) return json({ ok: false, message: `库里没有这条：${target.url}` }, 404);
   if (action === 'delete') {
-    const response = saveEdit(rows.filter((_, i) => i !== index), raw, `已删除：${previous.title}`);
-    if (response.ok) syncEditedStatus(previous.url);
+    const response = await applyEdit(rows.filter((_, i) => i !== index), `已删除：${previous.title}`, { from: previous.url });
     return response;
   }
 
@@ -643,33 +668,24 @@ const handleEdit = async (request: Request) => {
   if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
   if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
   const next = previous ? rows.map((r, i) => (i === index ? row : r)) : [...rows, row];
-  const response = saveEdit(next, raw, `${previous ? '已更新' : '已新增'}：${row.title}`);
-  if (response.ok && action === 'update') syncEditedStatus(previous.url, row.url);
+  const response = await applyEdit(next, `${previous ? '已更新' : '已新增'}：${row.title}`, previous ? { from: previous.url, to: row.url } : undefined);
   return response;
 };
 
-/** push 的目标固定是 origin 上的同名分支，不一定是当前分支的 upstream。 */
-const branchState = () => {
-  const branch = git(['branch', '--show-current']);
-  if (!branch) throw new Error('当前为分离 HEAD，请先切换到本地分支');
-  const counts = gitOr(['rev-list', '--left-right', '--count', `HEAD...refs/remotes/origin/${branch}`]);
-  const [ahead, behind] = counts ? counts.split(/\s+/).map(Number) : [null, null];
-  return { branch, ahead, behind };
-};
+/** gh CLI 已经用你的账号登录过（gh auth login），所以触发重建不需要额外的 token。
+ * 测试里可以用 `GH_BIN` 指向假脚本，避免真的去触发一次线上构建。 */
+const GH = process.env.GH_BIN || 'gh';
+const gh = (args: string[]) =>
+  execFileSync(GH, args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-const commitData = (rows: Resource[]) => {
-  const { added, removed, changed } = pendingDiff(rows);
-  const parts = [
-    added ? `新增 ${added} 条` : '',
-    removed ? `删除 ${removed} 条` : '',
-    changed ? `修改 ${changed} 条` : '',
-  ].filter(Boolean);
-  const message = parts.length ? `data: ${parts.join('、')}` : 'data: 更新资源数据';
-  const paths = [DATA_REL, STATUS_REL, ICONS_REL, ICONS_DIR];
-  git(['add', '--', ...paths]);
-  // 带路径提交：工作区和暂存区里的其它改动都留在原处。
-  git(['commit', '-m', message, '--', ...paths]);
-  return message;
+const WORKFLOW_FILE = 'deploy.yml';
+
+const currentBranch = () => {
+  try {
+    return git(['branch', '--show-current']) || 'master';
+  } catch {
+    return 'master';
+  }
 };
 
 const handlePublish = () => {
@@ -682,119 +698,94 @@ const handlePublish = () => {
   return json({ ok: true, id: task.id }, 202);
 };
 
-/** 校验 → 补图标 → 提交 → 推送。
+/** 同步数据 → 补图标 → 触发重建。
  *  每一步都写进任务快照，所以前端能显示「做到哪一步」「图标补到第几个域名」。 */
 const runPublishTask = async (id: string) => {
+  const warns: string[] = [];
   try {
-    tasks.mark(id, 'check', 'running');
-    const { branch, ahead, behind } = branchState();
-    if (behind) {
-      const message = `落后 origin/${branch} ${behind} 个提交，请先在终端同步再发布`;
-      return tasks.fail(id, { stepId: 'check', message, result: { ok: false, message } });
+    tasks.mark(id, 'sync', 'running');
+    const client = clientFor();
+    const data = await refreshCache(client);
+    store.rows = data.links;
+    store.statuses = data.status as Record<string, LinkStatus>;
+    store.loaded = true;
+    const validation = validateRows(store.rows, taxonomy());
+    if (validation.errors.length) {
+      const detail = `数据校验未通过，已中止发布（${validation.errors.length} 个问题）`;
+      return tasks.fail(id, { stepId: 'sync', message: detail, result: { ok: false, message: detail, errors: validation.errors } });
     }
-    tasks.mark(id, 'check', 'ok', `${branch}${ahead ? ` · 待推送 ${ahead}` : ''}`);
+    warns.push(...validation.warns);
+    const before = pendingDiff(store.rows);
+    tasks.mark(id, 'sync', 'ok', `${store.rows.length} 条资源`);
 
-    let message = '';
-    const warns: string[] = [];
-    if (dataDirty()) {
-      const { rows } = readRows();
-      const validation = validateRows(rows, taxonomy());
-      if (validation.errors.length) {
-        const detail = `校验未通过，已中止发布（${validation.errors.length} 个问题）`;
-        return tasks.fail(id, {
-          stepId: 'commit',
-          message: detail,
-          result: { ok: false, message: detail, errors: validation.errors },
-        });
-      }
-      warns.push(...validation.warns);
-
-      tasks.mark(id, 'icons', 'running');
-      let total = 0;
-      let done = 0;
-      const icons = await spawnLines(process.execPath, ['scripts/fetch-icons.mjs'], {
-        timeout: 180_000,
-        onLine: (line) => {
-          const plan = line.match(/(\d+) 个待抓/);
-          if (plan) {
-            total = Number(plan[1]);
-            tasks.progress(id, 0, total);
-            return;
-          }
-          if (!/^[✓✗]/.test(line)) return;
-          done++;
-          tasks.progress(id, done, total || done);
-          tasks.detail(id, line.trim());
-        },
-      });
-      if (!icons.ok) warns.push(`图标脚本失败：${tail(icons.stderr) || '未知原因'}`);
-      tasks.mark(
-        id,
-        'icons',
-        icons.ok ? 'ok' : 'fail',
-        total ? `${done}/${total} 个域名` : icons.ok ? '没有要抓的域名' : '脚本报错，已跳过',
-      );
-
-      if (git(['branch', '--show-current']) !== branch) {
-        const detail = '分支已切换，请重新确认发布';
-        return tasks.fail(id, { stepId: 'commit', message: detail, result: { ok: false, message: detail } });
-      }
-      tasks.mark(id, 'commit', 'running');
-      if (dataDirty()) {
-        try {
-          message = commitData(rows);
-        } catch (error) {
-          const detail = `提交失败：${gitError(error)}`;
-          return tasks.fail(id, { stepId: 'commit', message: detail, result: { ok: false, message: detail } });
+    tasks.mark(id, 'icons', 'running');
+    let total = 0;
+    let done = 0;
+    const icons = await spawnLines(process.execPath, ['scripts/fetch-icons.mjs'], {
+      timeout: 180_000,
+      onLine: (line) => {
+        const plan = line.match(/(\d+) 个待抓/);
+        if (plan) {
+          total = Number(plan[1]);
+          tasks.progress(id, 0, total);
+          return;
         }
-      }
-      tasks.mark(id, 'commit', message ? 'ok' : 'skip', message || '没有需要提交的数据改动');
-    } else {
-      tasks.mark(id, 'icons', 'skip', '数据没有改动');
-      tasks.mark(id, 'commit', 'skip', '数据没有改动');
-    }
+        if (!/^[✓✗]/.test(line)) return;
+        done++;
+        tasks.progress(id, done, total || done);
+        tasks.detail(id, line.trim());
+      },
+    });
+    if (!icons.ok) warns.push(`图标脚本失败：${tail(icons.stderr) || '未知原因'}`);
+    tasks.mark(
+      id,
+      'icons',
+      icons.ok ? 'ok' : 'fail',
+      total ? `${done}/${total} 个域名` : icons.ok ? '没有要抓的域名' : '脚本报错，已跳过',
+    );
 
-    if (!message && ahead === 0) {
-      const detail = '没有需要推送的改动';
-      return tasks.complete(id, { message: detail, result: { ok: true, nothing: true, message: detail, warns } });
-    }
-
-    tasks.mark(id, 'push', 'running');
-    const hash = git(['rev-parse', '--short', 'HEAD']);
+    tasks.mark(id, 'dispatch', 'running');
+    const branch = currentBranch();
     try {
-      git(['push', 'origin', `refs/heads/${branch}:refs/heads/${branch}`]);
+      gh(['workflow', 'run', WORKFLOW_FILE, '--ref', branch]);
     } catch (error) {
-      const detail = gitError(error);
-      const rejected = /rejected|non-fast-forward|fetch first/i.test(detail);
-      const explanation = rejected
-        ? `本地已提交 ${hash}，推送被拒。请在终端检查远端分支，再重试推送。`
-        : `本地已提交 ${hash}，尚未推送：${detail}`;
-      return tasks.fail(id, {
-        stepId: 'push',
-        message: explanation,
-        result: { ok: false, pushed: false, hash, message: explanation },
-      });
+      const detail = `触发失败：${gitError(error) || '请确认本机装了 gh 并已 gh auth login'}`;
+      return tasks.fail(id, { stepId: 'dispatch', message: detail, result: { ok: false, message: detail } });
     }
-
-    tasks.mark(id, 'push', 'ok', hash);
-    const detail = `${message || '本地提交'}（${hash}）已推送`;
-    return tasks.complete(id, { message: detail, result: { ok: true, message: detail, hash, branch, warns } });
+    writePublished(store.rows);
+    tasks.mark(id, 'dispatch', 'ok', branch);
+    const parts = [
+      before.added ? `新增 ${before.added} 条` : '',
+      before.removed ? `删除 ${before.removed} 条` : '',
+      before.changed ? `修改 ${before.changed} 条` : '',
+    ].filter(Boolean);
+    const detail = `已触发重建${parts.length ? `（${parts.join('、')}）` : ''}，约 1 分钟后上线`;
+    return tasks.complete(id, { message: detail, result: { ok: true, message: detail, branch, warns } });
   } catch (error) {
-    const detail = `发布失败：${gitError(error)}`;
+    const detail = `发布失败：${(error as Error).message}`;
     return tasks.fail(id, { message: detail, result: { ok: false, message: detail } });
   }
 };
 
 const handleStatus = () => {
   const { rows } = readRows();
+  const diff = pendingDiff(rows);
+  let publishedAt: string | null = null;
+  try {
+    publishedAt = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8')).publishedAt ?? null;
+  } catch {
+    publishedAt = null;
+  }
   return json({
     ok: true,
-    dirty: dataDirty(),
-    ...pendingDiff(rows),
-    ...branchState(),
+    dirty: diff.added + diff.removed + diff.changed > 0,
+    ...diff,
+    total: rows.length,
+    publishedAt,
     head: gitOr(['rev-parse', '--short', 'HEAD'], '?'),
   });
 };
+
 
 const handleMaintenance = () => {
   const { rows } = readRows();
@@ -815,9 +806,14 @@ const handleRecheck = async (request: Request) => {
   if (!row) return json({ ok: false, message: '链接不存在（可能已被改动）' }, 404);
 
   const status = datedStatus(await probeLink(row.url));
-  const statuses = readStatuses();
-  statuses[row.url] = status;
-  writeStatuses(statuses);
+  const client = clientFor({ write: true });
+  try {
+    await client.upsertStatus({ ...status, url: row.url });
+  } catch (error) {
+    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
+  }
+  store.statuses[row.url] = status;
+  await refreshCache(client);
   return json({ ok: true, status, tasks: maintenanceTasks(rows, { [row.url]: status }) });
 };
 
