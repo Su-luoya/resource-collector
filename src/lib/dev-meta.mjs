@@ -38,9 +38,6 @@ export const normUrl = (input) => {
   }
 };
 
-/** 同一个链接的两种写法（带不带结尾斜杠）视为同一条 */
-export const sameUrl = (a, b) => a === b || a.replace(/\/$/, '') === b.replace(/\/$/, '');
-
 const safeChar = (code) => {
   try {
     return String.fromCodePoint(code);
@@ -79,6 +76,20 @@ export const decodeEntities = (text) =>
 
 /** 标题/描述里偶尔混进行内标签，去掉以免把 `<b>` 写进 YAML */
 const stripTags = (text) => text.replace(/<[^>]*>/g, ' ');
+
+/**
+ * 抽可读正文，供 AI 生成时当唯一事实来源。够用即可：不引 HTML 解析器。
+ * 先掐掉不会出现在正文里的块（注释、script/style/noscript/svg/template/head），再去标签、解实体、折叠空白。
+ */
+export const htmlToText = (html, limit = 6000) => {
+  const src = typeof html === 'string' ? html : '';
+  const stripped = src
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style|noscript|svg|template|head|iframe)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<\/?(?:br|hr|p|div|li|tr|h[1-6]|section|article|header|footer|nav)\b[^>]*>/gi, ' · ')
+    .replace(/<[^>]*>/g, ' ');
+  return clean(decodeEntities(stripped), limit);
+};
 
 /**
  * 从一段 HTML 里取 title 与 description，够用即可：不引 HTML 解析器。

@@ -1,11 +1,6 @@
 ---
 import Catalog from '../components/Catalog.astro';
-import { SECTIONS, navItems, sectionCount, unknownFacets, links, lastUpdated } from '../lib/links';
-
-const bad = unknownFacets(links);
-if (bad.length) {
-  throw new Error(`links.yaml 里出现 taxonomy.json 未登记的取值：${bad.slice(0, 8).join('；')}`);
-}
+import { SECTIONS, navItems, sectionCount, links } from '../lib/links';
 
 const facetRows = [
   {
@@ -24,10 +19,9 @@ const facetRows = [
 
 <Catalog
   heading="资源库"
-  meta={`${links.length} 条 · ${SECTIONS.length} 个分区 · 最近更新 ${lastUpdated}`}
-  placeholder="搜索标题、简介、分类、域名…"
+  meta={`${links.length} 条 · ${SECTIONS.length} 个分区 · 最近更新 ${links[0]?.added ?? '—'}`}
+  placeholder="搜索标题、简介、分类、域名（多词用空格分隔）"
   nav={navItems()}
   facetRows={facetRows}
-  cards={links.map((link) => ({ link }))}
-  total={links.length}
+  cards={links}
 />

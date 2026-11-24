@@ -8,9 +8,7 @@ import {
   SECTION_BY_ID,
   navItems,
   facetsFor,
-  lastUpdated,
   sectionLinks,
-  unknownFacets,
 } from '../lib/links';
 
 export const getStaticPaths = (() =>
@@ -21,19 +19,15 @@ const def = SECTION_BY_ID.get(sectionId);
 if (!def) throw new Error(`taxonomy.json 里没有分区：${sectionId}`);
 
 const rows = sectionLinks(sectionId);
-const bad = unknownFacets(rows);
-if (bad.length) {
-  throw new Error(`links.yaml 里出现 taxonomy.json 未登记的取值：${bad.slice(0, 8).join('；')}`);
-}
 ---
 
 <Catalog
   heading={def.label}
-  meta={`${rows.length} 条 · 最近更新 ${lastUpdated}`}
+  meta={`${rows.length} 条 · 最近更新 ${rows[0]?.added ?? '—'}`}
   hint={def.hint}
-  placeholder={`在「${def.label}」里搜索…`}
+  placeholder={`在「${def.label}」里搜索（多词用空格分隔）`}
   nav={navItems(sectionId)}
   facetRows={facetsFor(sectionId, rows)}
-  cards={rows.map((link) => ({ link, sectionId }))}
-  total={rows.length}
+  cards={rows}
+  sectionId={sectionId}
 />

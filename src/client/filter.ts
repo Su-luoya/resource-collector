@@ -5,14 +5,34 @@
 //
 // 编辑层只在 dev 存在：`import.meta.env.DEV` 在构建时是常量 false，动态 import 整块被摇掉。
 
+import { markdownItem } from './markdown';
+import { highlightPattern, highlightPieces, matchesQuery, parseQuery } from './search';
+import { compareNewest, comparePinned } from '../lib/ordering.mjs';
+
 const cards = Array.from(document.querySelectorAll<HTMLAnchorElement>('.card'));
 const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip[data-facet]'));
 const qInput = document.getElementById('q') as HTMLInputElement;
 const shown = document.getElementById('shown') as HTMLElement;
 const hint = document.getElementById('hint') as HTMLElement;
 const clearBtn = document.getElementById('clear') as HTMLButtonElement;
+const copyBtn = document.getElementById('copy') as HTMLButtonElement;
+const copyStatus = document.getElementById('copy-status') as HTMLElement;
+const copyFallback = document.getElementById('copy-fallback') as HTMLTextAreaElement;
 const empty = document.getElementById('empty') as HTMLElement;
 const themeBtn = document.getElementById('theme') as HTMLButtonElement;
+const recentBar = document.getElementById('recent') as HTMLElement;
+const recentToggle = document.getElementById('recent-toggle') as HTMLButtonElement;
+
+/** 最近 7 天：用本地日期拼 YYYY-MM-DD，avoid toISOString 的 UTC 偏一天 */
+const RECENT_DAYS = 7;
+const recentCutoff = (() => {
+  const day = new Date();
+  day.setDate(day.getDate() - RECENT_DAYS);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+})();
+const recentTotal = cards.filter((card) => (card.dataset.added || '') >= recentCutoff).length;
+let recentOnly = false;
 
 /** 轴 = 页面渲染出来的 facet 行；首页只有 section 一条，分区页是该分区的各条轴 */
 const axes = [...new Set(chips.map((chip) => chip.dataset.facet || ''))].filter(Boolean);
@@ -31,28 +51,101 @@ const valuesOf = (card: HTMLAnchorElement, axis: string) =>
 
 const visible = () => cards.filter((card) => !card.hidden);
 
+/** 标题与简介的原文：高亮要从原文重建，不能拿已经插了 <mark> 的 textContent 当源 */
+const hlEls = cards.flatMap((card) => Array.from(card.querySelectorAll<HTMLElement>('[data-hl]')));
+const hlText = new Map<HTMLElement, string>(hlEls.map((el) => [el, el.textContent || '']));
+const grid = document.getElementById('grid') as HTMLElement | null;
+
+/** 高亮词：只在正文里出现过的片段包 <mark>，其余原样 */
+function paint(pattern: RegExp | null) {
+  for (const [el, text] of hlText) {
+    if (!pattern) {
+      if (el.childNodes.length > 1 || el.textContent !== text) el.textContent = text;
+      continue;
+    }
+    const card = el.closest<HTMLElement>('.card');
+    if (card?.hidden) continue;
+    const pieces = highlightPieces(text, pattern);
+    const only = pieces.length === 1 && !pieces[0].hit;
+    if (only) {
+      if (el.childNodes.length > 1) el.textContent = text;
+      continue;
+    }
+    el.replaceChildren(
+      ...pieces.map((piece) => {
+        if (!piece.hit) return document.createTextNode(piece.text);
+        const mark = document.createElement('mark');
+        mark.textContent = piece.text;
+        return mark;
+      }),
+    );
+  }
+}
+
+/**
+ * 排序：空闲时置顶优先，搜索时只用时间序（置顶不该挡住搜索结果）。
+ * 每次从原始数组重算，避免反复重排后顺序漂移。
+ */
+function reorder(idle: boolean) {
+  if (!grid) return;
+  const ordered = [...cards].sort((a, b) => {
+    const left = { pin: a.dataset.pin === '1', added: a.dataset.added || '', title: hlText.get(a.querySelector<HTMLElement>('h2')!) || '' };
+    const right = { pin: b.dataset.pin === '1', added: b.dataset.added || '', title: hlText.get(b.querySelector<HTMLElement>('h2')!) || '' };
+    return idle ? comparePinned(left, right) : compareNewest(left, right);
+  });
+  if (ordered.every((card, index) => cards[index] === card && grid.children[index] === (card.parentElement ?? card))) return;
+  // 卡片外面包了一层 .card-slot（为了放「详情」链接，不能套在 <a> 里）：重排要搬整块
+  for (const card of ordered) grid.append(card.parentElement ?? card);
+}
+
 function apply() {
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
+  const parsed = parseQuery(q);
   const active = axes.filter((axis) => picked[axis].size > 0);
+
+  const matchCard = (card: HTMLAnchorElement) =>
+    matchesQuery(parsed, {
+      haystack: card.dataset.search || '',
+      sections: (card.dataset.section || '').split(' ').filter(Boolean),
+      host: card.dataset.host || '',
+      pinned: card.dataset.pin === '1',
+      unread: card.dataset.read === '1',
+      hasNote: card.dataset.note === '1',
+    });
   let n = 0;
 
   for (const card of cards) {
     const okFacets = active.every((axis) => valuesOf(card, axis).some((v) => picked[axis].has(v)));
-    const okQuery = !q || (card.dataset.search || '').includes(q);
-    const show = okFacets && okQuery;
-    card.hidden = !show;
+    const okRecent = !recentOnly || (card.dataset.added || '') >= recentCutoff;
+    const show = okFacets && okRecent && matchCard(card);
+    // 卡片外面包了一层 .card-slot，隐藏要作用在外层，否则网格里留空位
+    (card.parentElement ?? card).hidden = !show;
     if (show) n++;
   }
 
+  reorder(q === '');
+  paint(highlightPattern(parsed.text));
+
   shown.textContent = String(n);
   empty.hidden = n > 0;
+  copyBtn.hidden = n === 0;
+  copyBtn.textContent = `复制这 ${n} 条`;
+  copyStatus.textContent = '';
+  copyFallback.hidden = true;
 
-  const filtering = active.length > 0 || q !== '';
+  recentBar.hidden = recentTotal === 0;
+  recentToggle.innerHTML = recentOnly
+    ? `正在只看最近 ${RECENT_DAYS} 天的 <strong>${recentTotal}</strong> 条 · 显示全部`
+    : `最近 ${RECENT_DAYS} 天新增 <strong>${recentTotal}</strong> 条 · 只看这些`;
+  recentToggle.setAttribute('aria-pressed', recentOnly ? 'true' : 'false');
+
+  const filtering = active.length > 0 || q !== '' || recentOnly;
   clearBtn.hidden = !filtering;
 
   const notes: string[] = [];
   if (active.some((axis) => picked[axis].size > 1)) notes.push('同一行内取并集');
   if (active.length > 1) notes.push('不同行取交集');
+  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:pinned / is:unread / is:read / is:note`);
   hint.textContent = notes.length ? `（${notes.join('，')}）` : '';
 
   for (const chip of chips) {
@@ -63,7 +156,7 @@ function apply() {
   // 筛选状态写进 hash：刷新、分享、前进后退都能还原
   const params = new URLSearchParams();
   for (const axis of axes) if (picked[axis].size) params.set(axis, [...picked[axis]].join(','));
-  if (q) params.set('q', query.trim());
+  if (q) params.set('q', q);
   const frag = params.toString();
   history.replaceState(null, '', frag ? `#${frag}` : location.pathname + location.search);
 
@@ -86,9 +179,15 @@ function readHash() {
 function reset() {
   for (const axis of axes) picked[axis].clear();
   query = '';
+  recentOnly = false;
   qInput.value = '';
   apply();
 }
+
+recentToggle.addEventListener('click', () => {
+  recentOnly = !recentOnly;
+  apply();
+});
 
 for (const chip of chips) {
   chip.addEventListener('click', () => {
@@ -104,6 +203,32 @@ for (const chip of chips) {
 qInput.addEventListener('input', () => {
   query = qInput.value;
   apply();
+});
+
+copyBtn.addEventListener('click', async () => {
+  const list = visible();
+  if (!list.length) return;
+  const view = location.hash;
+  const text = list.map((card) => markdownItem(
+    card.querySelector('h2')!.textContent,
+    card.getAttribute('href')!,
+    card.querySelector('.desc')!.textContent,
+  )).join('\n');
+
+  let copied = true;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    copied = false;
+  }
+  if (location.hash !== view) return; // 等待剪贴板权限时，筛选结果可能已经变了。
+  copyFallback.hidden = copied;
+  copyStatus.textContent = copied ? `已复制 ${list.length} 条（Markdown）` : '无法自动复制，请手动复制下方已选中的清单。';
+  if (!copied) {
+    copyFallback.value = text;
+    copyFallback.focus();
+    copyFallback.select();
+  }
 });
 
 clearBtn.addEventListener('click', reset);
@@ -144,6 +269,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     move(-1);
   } else if (event.key === 'Enter' && activeIndex >= 0) {
+    if (event.target instanceof Element && event.target.closest('button, a')) return;
     visible()[activeIndex]?.click();
   }
 });

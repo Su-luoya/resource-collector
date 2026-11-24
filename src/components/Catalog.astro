@@ -12,6 +12,8 @@ import {
   facetAttrs,
   badgeLabels,
   tagLabels,
+  unreadCount,
+  linkHref,
 } from '../lib/links';
 import type { Resource } from '../lib/links';
 
@@ -40,12 +42,6 @@ export interface NavItem {
   active: boolean;
 }
 
-export interface Card {
-  link: Resource;
-  /** 分区页传分区 id：徽标与筛选属性用该分区的轴；首页留空，徽标显示分区名 */
-  sectionId?: string;
-}
-
 interface Props {
   heading: string;
   meta: string;
@@ -53,16 +49,21 @@ interface Props {
   placeholder: string;
   nav: NavItem[];
   facetRows: FacetRow[];
-  cards: Card[];
-  total: number;
+  cards: Resource[];
+  sectionId?: string;
 }
 
-const { heading, meta, hint = '', placeholder, nav, facetRows, cards, total } = Astro.props;
+const { heading, meta, hint = '', placeholder, nav, facetRows, cards, sectionId } = Astro.props;
+const total = cards.length;
+
+/** 「待看」是一个全局状态轴，与分区无关；没有条目就整行不要出 */
+const unread = unreadCount(cards);
+const rows = unread
+  ? [...facetRows, { id: 'read', label: '状态', hint: '只在本地标记，不影响他人', values: [{ id: 'unread', label: '待看', count: unread }] }]
+  : facetRows;
 
 /** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉 */
 const DEV = import.meta.env.DEV;
-/** dev 新增时预选当前分区：从分区页点「＋ 新增」默认就归到这一区 */
-const pageSection = cards.find((card) => card.sectionId)?.sectionId;
 const title = heading === '资源库' ? '资源库' : `${heading} · 资源库`;
 const description = `${heading}：${total} 条资源${hint ? `（${hint}）` : ''}，可搜索与按分类筛选。`;
 const jsonHref = `${base}links.json`;
@@ -99,61 +100,94 @@ const rssHref = `${base}rss.xml`;
       </svg>
     </button>
   </div>
+</header>
 
-  <nav class="wrap section-nav" aria-label="分区">
+<div class="wrap catalog-layout">
+  <aside class="sidebar" aria-label="资源浏览与筛选">
+    <div class="sidebar-heading">浏览分区</div>
+    <nav class="section-nav" aria-label="分区">
+      {
+        nav.map((item) => (
+          <a
+            class="section-link"
+            class:list={{ 'is-active': item.active }}
+            href={item.href}
+            aria-current={item.active ? 'page' : undefined}
+          >
+            <span>{item.label}</span>
+            <span class="n">{item.count}</span>
+          </a>
+        ))
+      }
+    </nav>
+
     {
-      nav.map((item) => (
-        <a
-          class="chip section-chip"
-          class:list={{ 'is-active': item.active }}
-          href={item.href}
-          aria-current={item.active ? 'page' : undefined}
-        >
-          {item.label}
-          <span class="n">{item.count}</span>
-        </a>
-      ))
+      facetRows.length > 0 && (
+        <div class="facets">
+          <div class="sidebar-heading">筛选资源</div>
+          {rows.map((row) => (
+            <section class="facet-row" role="group" aria-label={`按${row.label}筛选`}>
+              <div class="facet-heading">
+                <span class="facet-name">{row.label}</span>
+                {row.hint && <span class="facet-hint" title={row.hint}>可多选</span>}
+              </div>
+              <div class="facet-values">
+                {row.values.map((v) => (
+                  <button
+                    class="chip"
+                    type="button"
+                    data-facet={row.id}
+                    data-value={v.id}
+                    aria-pressed="false"
+                    title={v.hint ?? row.hint}
+                  >
+                    <span>{v.label}</span>
+                    <span class="n">{v.count}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )
     }
-  </nav>
+  </aside>
+
+  <main>
+    {hint && <p class="page-hint">{hint}</p>}
+    <p id="recent" class="recent-note" hidden>
+      <button id="recent-toggle" type="button">最近 7 天新增 <strong id="recent-count">0</strong> 条 · 只看这些</button>
+    </p>
+    <div class="toolbar">
+    <span>显示 <strong id="shown">{total}</strong> / {total} 条</span>
+    <button id="copy" type="button" title="复制为 Markdown 列表" hidden>复制这 {total} 条</button>
+    <span id="hint"></span>
+    <button id="clear" type="button" hidden>清除筛选</button>
+    <span id="copy-status" role="status"></span>
+    <textarea id="copy-fallback" aria-label="手动复制 Markdown 清单" rows="4" spellcheck="false" readonly hidden></textarea>
+  </div>
 
   {
-    facetRows.length > 0 && (
-      <div class="wrap facets">
-        {facetRows.map((row) => (
-          <div class="facet-row" role="group" aria-label={`按${row.label}筛选`}>
-            <span class="facet-name">{row.label}</span>
-            {row.values.map((v) => (
-              <button
-                class="chip"
-                type="button"
-                data-facet={row.id}
-                data-value={v.id}
-                aria-pressed="false"
-                title={v.hint ?? row.hint}
-              >
-                {v.label}
-                <span class="n">{v.count}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+    DEV && (
+      <div id="dev" data-base={base} data-section={sectionId}>
+        <span class="dev-tag">本地编辑</span>
+        <button type="button" id="dev-add">＋ 新增资源</button>
+        <button type="button" id="dev-batch">批量导入</button>
+        <button type="button" id="dev-maintenance">链接维护</button>
+        <button type="button" id="dev-publish">发布</button>
+        <button type="button" id="dev-scan">查重</button>
+        <button type="button" id="dev-import">导入书签文件</button>
+        <a id="dev-capture" href="#" title="拖到书签栏：在任何页面点它，就把当前地址带回来收录">收录书签</a>
+        <input id="dev-import-file" type="file" accept=".html,text/html" hidden />
+        <span id="dev-state" role="status"></span>
+        <span class="dev-hint">⌘K 命令</span>
       </div>
     )
   }
 
-  {hint && <div class="wrap page-hint">{hint}</div>}
-</header>
-
-<main class="wrap">
-  <div class="toolbar">
-    <span>显示 <strong id="shown">{total}</strong> / {total} 条</span>
-    <span id="hint"></span>
-    <button class="clear-btn" id="clear" type="button" hidden>清除筛选</button>
-  </div>
-
   <div class="grid" id="grid">
     {
-      cards.map(({ link: l, sectionId }) => {
+      cards.map((l) => {
         const st = statusOf(l.url);
         const host = hostOf(l.url);
         const initial = (host.match(/[a-z0-9]/i)?.[0] ?? '·').toUpperCase();
@@ -164,6 +198,7 @@ const rssHref = `${base}rss.xml`;
         // 首页一条资源会同时带多个分区的分类，不限数量会撑破卡片：只用前 3 个，其余折成「+N」
         const tags = tagLabels(l, sectionId);
         return (
+          <div class="card-slot">
           <a
             class="card"
             href={l.url}
@@ -174,6 +209,11 @@ const rssHref = `${base}rss.xml`;
             data-facets={JSON.stringify(l.facets)}
             data-search={searchText(l)}
             data-added={l.added}
+            data-host={host}
+            data-pin={l.pin ? '1' : ''}
+            data-read={l.read === false ? '1' : ''}
+            data-note={l.note ? '1' : ''}
+            data-note-text={l.note ?? ''}
           >
             <span class="card-top">
               <span class="fav">
@@ -183,9 +223,9 @@ const rssHref = `${base}rss.xml`;
                   <span class="initial">{initial}</span>
                 )}
               </span>
-              <h2>{l.title}</h2>
+              <h2 data-hl>{l.title}</h2>
             </span>
-            <p class="desc">{l.desc}</p>
+            <p class="desc" data-hl>{l.desc}</p>
             <span class="card-bottom">
               <span class="type-badge">{badgeLabels(l, sectionId).join(' · ')}</span>
               <span class="mini-tags">
@@ -198,6 +238,7 @@ const rssHref = `${base}rss.xml`;
                   </span>
                 )}
               </span>
+              {l.read === false && <span class="badge-unread" title="标记为待看">待看</span>}
               {linkBad && (
                 <span class={st!.status === 'fail' ? 'badge-fail' : 'badge-warn'} title={`最近检查：${st!.checked}`}>
                   {badge}
@@ -206,6 +247,8 @@ const rssHref = `${base}rss.xml`;
             </span>
             <span class="host">{host}</span>
           </a>
+          <a class="card-detail" href={linkHref(l)} title={l.note ? '详情与笔记' : '详情'}>详情</a>
+          </div>
         );
       })
     }
@@ -218,19 +261,13 @@ const rssHref = `${base}rss.xml`;
     <span><a href={jsonHref}>links.json</a></span>
     <span><a href={rssHref}>RSS</a></span>
   </footer>
-</main>
+  </main>
+</div>
 
 {
   DEV && (
     <Fragment>
-      <div id="dev" data-base={base} data-section={pageSection}>
-        <span class="dev-tag">编辑模式</span>
-        <button type="button" id="dev-add">＋ 新增</button>
-        <button type="button" id="dev-publish">发布</button>
-        <span id="dev-state"></span>
-      </div>
-
-      <dialog id="dev-dialog">
+      <dialog id="dev-dialog" class="dev-dialog">
         <form id="dev-form">
           <h3 id="dev-heading">新增资源</h3>
 
@@ -250,6 +287,12 @@ const rssHref = `${base}rss.xml`;
             <button type="button" id="f-fetch">自动抓取标题与简介</button>
             <span id="f-fetch-msg"></span>
           </div>
+          <div class="dev-fetch">
+            <button type="button" id="f-ai">AI 生成标题、简介与分类</button>
+            <span id="f-ai-msg"></span>
+          </div>
+          <div id="f-ai-evidence" class="dev-ai-evidence" hidden></div>
+          <div id="f-url-feedback" class="dev-url-feedback" hidden></div>
 
           <label class="dev-field">
             <span>标题 <em>≤80 字</em></span>
@@ -264,6 +307,16 @@ const rssHref = `${base}rss.xml`;
           <label class="dev-field">
             <span>收录日期</span>
             <input id="f-added" type="date" />
+          </label>
+
+          <label class="dev-field">
+            <span>笔记 <em>可选，Markdown：段落 / - 列表 / **粗体** / `代码` / [文字](链接)</em></span>
+            <textarea id="f-note" rows="4" maxlength="4000" placeholder="为什么收它、关键结论是什么（只写在详情页）"></textarea>
+          </label>
+
+          <label class="dev-check">
+            <input id="f-read" type="checkbox" />
+            <span>标记为「待看」（没看过、想稍后再读）</span>
           </label>
 
           <fieldset class="dev-sections">
@@ -311,10 +364,98 @@ const rssHref = `${base}rss.xml`;
             <button type="button" class="del" id="f-delete" hidden>
               删除
             </button>
+            <button type="button" class="del" id="f-batch-discard" hidden>放弃本批</button>
             <button type="button" id="f-cancel">取消</button>
             <button type="button" class="primary" id="f-save">保存</button>
           </div>
         </form>
+      </dialog>
+      <dialog id="dev-batch-dialog" class="dev-dialog">
+        <section class="dev-batch">
+          <h3>批量导入</h3>
+          <p>每行一个 URL，每批最多 20 条。系统并发抓取标题和简介，已存在及本批重复的 URL 会跳过。</p>
+          <p>草稿只保留在当前页面内存中；逐条确认分类后，整批才会一次写入。</p>
+          <textarea id="dev-batch-urls" rows="8" spellcheck="false" placeholder="https://example.com/a&#10;https://example.com/b"></textarea>
+          <div id="dev-batch-progress" class="dev-progress" hidden></div>
+          <p id="dev-batch-msg" class="dev-maintenance-reason" role="status"></p>
+          <div id="dev-batch-skipped" class="dev-batch-skipped"></div>
+          <div class="dev-actions">
+            <button type="button" id="dev-batch-cancel">关闭</button>
+            <button type="button" class="primary" id="dev-batch-start">抓取草稿</button>
+          </div>
+        </section>
+      </dialog>
+      <dialog id="dev-publish-dialog" class="dev-dialog">
+        <section class="dev-publish">
+          <h3>确认发布</h3>
+          <p id="dev-publish-summary" class="dev-publish-summary"></p>
+          <div id="dev-publish-list" class="dev-publish-list"></div>
+          <div id="dev-publish-progress" class="dev-progress" hidden></div>
+          <p class="dev-err" id="dev-publish-err" hidden></p>
+          <div class="dev-actions">
+            <button type="button" id="dev-publish-cancel">取消</button>
+            <button type="button" class="primary" id="dev-publish-confirm">确认发布</button>
+          </div>
+        </section>
+      </dialog>
+      <div id="dev-selectbar" class="dev-selectbar" hidden>
+        <span id="dev-select-count">已选 0 条</span>
+        <button type="button" id="dev-select-open">全部打开</button>
+        <button type="button" class="del" id="dev-select-delete">批量删除</button>
+        <button type="button" id="dev-select-clear">取消选择</button>
+      </div>
+      <div id="dev-toasts" class="dev-toasts" role="status" aria-live="polite"></div>
+      <dialog id="dev-palette" class="dev-dialog dev-palette">
+        <input
+          id="dev-palette-input"
+          type="text"
+          placeholder="搜索命令…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="命令"
+        />
+        <ul id="dev-palette-list" class="dev-palette-list"></ul>
+        <p class="dev-palette-hint">↑↓ 选择 · Enter 执行 · Esc 关闭</p>
+      </dialog>
+      <dialog id="dev-scan-dialog" class="dev-dialog">
+        <section class="dev-scan">
+          <div class="dev-maintenance-head">
+            <div>
+              <h3>全库查重</h3>
+              <p>只报能确定的三类：URL 归一化后相同、去掉跟踪参数后相同、同站点且标题相同。</p>
+            </div>
+            <button type="button" id="dev-scan-close">关闭</button>
+          </div>
+          <div id="dev-scan-list" class="dev-scan-list"></div>
+        </section>
+      </dialog>
+      <dialog id="dev-maintenance-dialog" class="dev-dialog">
+        <section class="dev-maintenance">
+          <div class="dev-maintenance-head">
+            <div>
+              <h3>链接维护</h3>
+              <p>首次出现的失败和需要人工确认的重定向会列在这里；warn 仍只显示卡片角标。</p>
+            </div>
+            <button type="button" id="dev-maintenance-close">关闭</button>
+          </div>
+          <div id="dev-maintenance-list" class="dev-maintenance-list"></div>
+        </section>
+      </dialog>
+      <dialog id="dev-import-dialog" class="dev-dialog">
+        <section class="dev-scan">
+          <div class="dev-maintenance-head">
+            <div>
+              <h3>导入书签</h3>
+              <p id="dev-import-summary"></p>
+            </div>
+            <button type="button" id="dev-import-close">关闭</button>
+          </div>
+          <div id="dev-import-list" class="dev-scan-list"></div>
+          <div class="dev-import-foot">
+            <p id="dev-import-msg" class="dev-import-msg"></p>
+            <button type="button" id="dev-import-commit" class="dev-primary">导入</button>
+          </div>
+        </section>
       </dialog>
     </Fragment>
   )

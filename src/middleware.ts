@@ -5,51 +5,41 @@
 //
 // 路由（都挂在站点 base 之下，例如 /resource-collector/api/edit）：
 //   POST  api/meta      { url }                        → 抓目标页的 title / description
+//   POST  api/ai-draft  { url, current, overwrite }     → 本机 pi 依页面正文生成标题/简介/分区分类
 //   POST  api/edit      { action, ... }                → add | update | delete
-//   GET   api/status                                    → 本地数据改动概览
-//   POST  api/publish                                   → 抓图标 → 校验 → commit → push
+//   POST  api/batch-meta { urls }                      → 批量抓取草稿，不写文件
+//   POST  api/batch-add { rows }                       → 校验后一次写入整批资源
+//   POST  api/import-bookmarks { html, commit }        → 浏览器书签文件：先出草稿，确认后一次写入
+//   POST  api/duplicates { url, title, excludeUrl }     → 相似候选与跟踪参数清理建议
+//   GET   api/duplicates-scan                           → 全库查重：同 URL / 清参数后相同 / 同站点同名
+//   GET   api/status                                    → 数据改动与分支推送状态
+//   GET   api/publish-preview                           → 发布前的结构化数据差异
+//   GET   api/maintenance                               → fail 与待人工处理的 redirect
+//   POST  api/recheck   { url }                         → 单条复查并更新体检状态
+//   POST  api/publish                                   → 启动发布任务，立即返回 { id }
+//   POST  api/batch-meta { urls }                      → 启动批量抓取任务，立即返回 { id }
+//   GET   api/task?id=…                                 → 任务进度快照；不带 id 时只列正在跑的任务
 import { defineMiddleware } from 'astro:middleware';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { execFile, execFileSync } from 'node:child_process';
-import { dumpLinks, parseLinks, validateRows, diffRows } from './lib/link-data.mjs';
-import { clean, extractMeta, normUrl, sameUrl } from './lib/dev-meta.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { dumpLinks, parseLinks, validateRows, diffRows, diffRowDetails, urlKey } from './lib/link-data.mjs';
+import { clean, extractMeta, htmlToText, normUrl } from './lib/dev-meta.mjs';
+import { buildPrompt, mergeDraft, parseDraft } from './lib/ai-draft.mjs';
+import { datedStatus, maintenanceTasks, probeLink } from './lib/link-maintenance.mjs';
+import { cleanupUrl, findDuplicateCandidates, scanDuplicates } from './lib/link-quality.mjs';
+import { suggestFor } from './lib/link-rules.mjs';
+import { parseBookmarks, tidyTitle } from './lib/bookmarks-html.mjs';
+import { createTaskStore } from './lib/dev-task.mjs';
+import type { LinkStatus, Resource } from './lib/links';
 
 const ROOT = process.cwd();
 const DATA_REL = 'src/data/links.yaml';
+const STATUS_REL = 'src/data/link-status.json';
 const ICONS_REL = 'src/data/icons.json';
 const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
 
-/** 一条链接的存储形态；字段顺序、引号规则见 src/lib/link-data.mjs */
-type FacetValues = Record<string, string | string[]>;
-type LinkRow = {
-  title: string;
-  url: string;
-  section: string[];
-  facets: Record<string, FacetValues>;
-  desc: string;
-  added: string;
-};
-
-/** 表单传来的 section / facets 只做形状清洗，取值合法性交给 validateRows 统一判定 */
-const readFacets = (body: Record<string, unknown>): Record<string, FacetValues> => {
-  const out: Record<string, FacetValues> = {};
-  if (!body.facets || typeof body.facets !== 'object' || Array.isArray(body.facets)) return out;
-  for (const [sid, values] of Object.entries(body.facets as Record<string, unknown>)) {
-    if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-    const one: FacetValues = {};
-    for (const [fid, raw] of Object.entries(values as Record<string, unknown>)) {
-      if (Array.isArray(raw)) one[fid] = [...new Set(raw.map((v) => String(v)).filter(Boolean))];
-      else if (typeof raw === 'string' && raw.trim()) one[fid] = raw.trim();
-    }
-    out[sid] = one;
-  }
-  return out;
-};
-
-const readSections = (body: Record<string, unknown>): string[] =>
-  Array.isArray(body.section) ? [...new Set(body.section.map((v) => String(v)).filter(Boolean))] : [];
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -59,21 +49,47 @@ const json = (body: unknown, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-const readRows = (): { raw: string; rows: LinkRow[] } => {
+const readRows = (): { raw: string; rows: Resource[] } => {
   const raw = readFileSync(resolve(ROOT, DATA_REL), 'utf8');
-  return { raw, rows: parseLinks(raw) as LinkRow[] };
+  return { raw, rows: parseLinks(raw) };
 };
 
-const writeRows = (rows: LinkRow[], raw: string) => {
+const readStatuses = (): Record<string, LinkStatus> =>
+  JSON.parse(readFileSync(resolve(ROOT, STATUS_REL), 'utf8'));
+
+const writeStatuses = (statuses: Record<string, LinkStatus>) => {
+  const target = resolve(ROOT, STATUS_REL);
+  const tmp = `${target}.${process.pid}.tmp`;
+  const sorted = Object.fromEntries(Object.entries(statuses).sort(([a], [b]) => a.localeCompare(b)));
+  writeFileSync(tmp, `${JSON.stringify(sorted, null, 2)}\n`);
+  renameSync(tmp, target);
+};
+
+// URL 真正换掉时清掉旧状态；仅规范化写法变化时保留并迁移状态。
+const syncEditedStatus = (from: string, to?: string) => {
+  if (from === to) return;
+  const statuses = readStatuses();
+  const previous = statuses[from];
+  delete statuses[from];
+  if (to) delete statuses[to];
+  if (to && previous && urlKey(from) === urlKey(to)) statuses[to] = previous;
+  writeStatuses(statuses);
+};
+
+const saveEdit = (rows: unknown[], raw: string, message: string) => {
+  const { errors } = validateRows(rows, taxonomy());
+  if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
   const target = resolve(ROOT, DATA_REL);
   const tmp = `${target}.tmp`;
   writeFileSync(tmp, dumpLinks(rows, raw), 'utf8');
   renameSync(tmp, target);
+  return json({ ok: true, message, total: rows.length });
 };
 
 const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
 
-const fetchMeta = async (url: string) => {
+/** 抓一个网页的 HTML：api/meta 与 api/ai-draft 共用，失败原因统一透给前端 */
+const fetchPage = async (url: string) => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 6000);
   try {
@@ -85,20 +101,26 @@ const fetchMeta = async (url: string) => {
     if (!res.ok) return { ok: false, reason: `目标页返回 HTTP ${res.status}` };
     const type = (res.headers.get('content-type') ?? '').toLowerCase();
     if (type && !/html|xml/.test(type)) return { ok: false, reason: `不是网页（${type.split(';')[0]}）` };
-    const html = (await res.text()).slice(0, 400_000);
-    const { title, desc, source } = extractMeta(html);
-    if (!title && !desc) return { ok: false, reason: '页面里没找到 <title> 或 description' };
-    const notes: string[] = [];
-    if (res.url && res.url !== url) notes.push(`会跳转到 ${res.url}，要不要改填这个？`);
-    if (source === 'og') notes.push('简介取自 og:description，多为标语，需改写');
-    else if (source === 'description') notes.push('简介是站点自述，请确认是否属事实');
-    return { ok: true, title, desc, final: res.url, note: notes.join('；') };
+    return { ok: true, html: (await res.text()).slice(0, 400_000), final: res.url };
   } catch (error) {
     const e = error as { name?: string; message?: string };
     return { ok: false, reason: e?.name === 'AbortError' ? '抓取超时（6 秒）' : `抓取失败：${e?.message ?? e}` };
   } finally {
     clearTimeout(timer);
   }
+};
+
+const fetchMeta = async (url: string) => {
+  const page = await fetchPage(url);
+  if (!page.ok) return { ok: false, reason: page.reason };
+  const html = page.html ?? '';
+  const { title, desc, source } = extractMeta(html);
+  if (!title && !desc) return { ok: false, reason: '页面里没找到 <title> 或 description' };
+  const notes: string[] = [];
+  if (page.final && page.final !== url) notes.push(`会跳转到 ${page.final}，要不要改填这个？`);
+  if (source === 'og') notes.push('简介取自 og:description，多为标语，需改写');
+  else if (source === 'description') notes.push('简介是站点自述，请确认是否属事实');
+  return { ok: true, title, desc, final: page.final, note: notes.join('；') };
 };
 
 const git = (args: string[]) =>
@@ -117,24 +139,446 @@ const gitError = (error: unknown) => {
   return (e?.stderr || e?.stdout || e?.message || String(error)).trim();
 };
 
-/** 异步跑子进程：图标抓取可能要几十秒，同步版本会把整个 dev server 卡住 */
-const run = (command: string, args: string[], timeout: number) =>
-  new Promise<{ ok: boolean; stdout: string; stderr: string }>((done) => {
-    execFile(command, args, { cwd: ROOT, timeout, maxBuffer: 16 << 20 }, (error, stdout, stderr) => {
-      done({ ok: !error, stdout: stdout ?? '', stderr: error ? stderr || String(error) : (stderr ?? '') });
+/** 异步跑子进程：图标抓取可能要几十秒，同步版本会把整个 dev server 卡住。
+ *  同时把 stdout 逐行回调出去，发布进度条的「3/24」就是从这些行里数出来的。 */
+const spawnLines = (
+  command: string,
+  args: string[],
+  { timeout = 180_000, onLine }: { timeout?: number; onLine?: (line: string) => void } = {},
+) =>
+  new Promise<{ ok: boolean; stdout: string; stderr: string; timedOut: boolean }>((done) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (error) {
+      done({ ok: false, stdout: '', stderr: gitError(error), timedOut: false });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let pending = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeout);
+    child.stdout?.on('data', (chunk) => {
+      const text = String(chunk);
+      stdout += text;
+      pending += text;
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) onLine?.(line);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      done({ ok: false, stdout, stderr: stderr || gitError(error), timedOut });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (pending) onLine?.(pending);
+      done({ ok: code === 0, stdout, stderr, timedOut });
     });
   });
 
 const tail = (text: string, lines = 2) => text.trim().split('\n').slice(-lines).join(' ').trim();
 
-/** 当前工作区里这三类数据文件是否有未提交改动 */
-const dataDirty = () => gitOr(['status', '--porcelain', '--', DATA_REL, ICONS_REL, ICONS_DIR]) !== '';
+/** dev 期的长任务（发布、批量抓取）登记在这里，前端按 id 轮询 */
+const tasks = createTaskStore();
+
+const PUBLISH_STEPS = [
+  { id: 'check', label: '检查分支与待发布改动' },
+  { id: 'icons', label: '补抓缺失图标' },
+  { id: 'commit', label: '提交数据' },
+  { id: 'push', label: '推送分支' },
+];
+
+const BATCH_STEPS = [{ id: 'fetch', label: '抓取页面标题与简介' }];
+
+/** 当前工作区里这些数据与图标文件是否有未提交改动 */
+const dataDirty = () => git(['status', '--porcelain', '--', DATA_REL, STATUS_REL, ICONS_REL, ICONS_DIR]) !== '';
 
 /** 与 HEAD 里的 links.yaml 对比，得出待发布的新增/删除/修改条数 */
-const pendingDiff = (rows: LinkRow[]) => {
+const pendingDiff = (rows: Resource[]) => {
   const prevRaw = gitOr(['show', `HEAD:${DATA_REL}`]);
   if (!prevRaw) return { added: rows.length, removed: 0, changed: 0 };
-  return diffRows(parseLinks(prevRaw) as LinkRow[], rows);
+  return diffRows(parseLinks(prevRaw), rows);
+};
+
+const handlePublishPreview = () => {
+  const { rows } = readRows();
+  const prevRaw = gitOr(['show', `HEAD:${DATA_REL}`]);
+  const before = prevRaw ? parseLinks(prevRaw) : [];
+  return json({
+    ok: true,
+    ...diffRowDetails(before, rows),
+    statusChanged: git(['status', '--porcelain', '--', STATUS_REL]) !== '',
+    icons: git(['status', '--porcelain', '--', ICONS_REL, ICONS_DIR]).split('\n').filter(Boolean),
+  });
+};
+
+const handleDuplicates = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const target = normUrl(body?.url);
+  if (!target.url) return json({ ok: false, message: target.error }, 400);
+  // 只有编辑（或维护里改 URL）才排除自身；新增时必须把完全重复的那条报出来。
+  const excluded = body?.excludeUrl ? normUrl(body.excludeUrl) : null;
+  if (excluded && !excluded.url) return json({ ok: false, message: excluded.error }, 400);
+  const { rows } = readRows();
+  return json({
+    ok: true,
+    cleanup: cleanupUrl(target.url),
+    candidates: findDuplicateCandidates({
+      url: target.url,
+      title: clean(body?.title, 80),
+      excludeUrl: excluded?.url ?? '',
+      rows,
+    }),
+  });
+};
+
+const BATCH_LIMIT = 20;
+
+/** 全库查重：只读，不动数据。报出来的每组都要用户自己决定怎么处理。 */
+const handleDuplicatesScan = () => {
+  const { rows } = readRows();
+  return json({ ok: true, ...scanDuplicates(rows) });
+};
+
+// AI 生成：只在本机 dev 里跑，固定调用 PATH 上的 pi（或 PI_BIN 指定的二进制），不开工具与 session。
+const AI_TEXT_LIMIT = 6000;
+const AI_TIMEOUT = 45_000;
+
+const runPi = (prompt: string) =>
+  new Promise<{ ok: boolean; stdout: string; stderr: string; timedOut: boolean }>((done) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      // stdin 必须给 /dev/null：execFile 的管道会让 `pi -p` 等到 EOF，实测卡到超时
+      child = spawn(
+        process.env.PI_BIN || 'pi',
+        [
+          '-p',
+          '--no-session',
+          '--no-tools',
+          '--no-context-files',
+          '--no-mcp',
+          '--no-extensions',
+          '--no-skills',
+          '--no-prompt-templates',
+          '--mode',
+          'text',
+          prompt,
+        ],
+        { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    } catch (error) {
+      done({ ok: false, stdout: '', stderr: gitError(error), timedOut: false });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, AI_TIMEOUT);
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      done({ ok: false, stdout, stderr: stderr || gitError(error), timedOut });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      done({ ok: code === 0, stdout, stderr, timedOut });
+    });
+  });
+
+/**
+ * 填一个 URL 就由模型写元信息。只把抓到的页面正文交给模型，不写盘；
+ * 输出先过词表过滤与正文比对，再与表单已有内容合并（默认不覆盖已填内容）。
+ */
+const handleAiDraft = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const target = normUrl(body?.url);
+  if (!target.url) return json({ ok: false, message: target.error }, 400);
+
+  const page = await fetchPage(target.url);
+  if (!page.ok) return json({ ok: false, message: page.reason }, 422);
+  const html = page.html ?? '';
+  const text = htmlToText(html, AI_TEXT_LIMIT);
+  if (text.length < 200) {
+    return json({ ok: false, message: '页面正文太少（多半是纯 JS 渲染站），没法只依据正文生成' }, 422);
+  }
+
+  const started = Date.now();
+  const result = await runPi(
+    buildPrompt({ url: target.url, pageTitle: extractMeta(html).title, text, taxonomy: taxonomy() }),
+  );
+  if (!result.ok) {
+    const reason = result.timedOut ? `调用 pi 超时（${AI_TIMEOUT / 1000} 秒）` : `调用 pi 失败：${tail(result.stderr, 3) || '返回非零'}`;
+    return json({ ok: false, message: reason }, 502);
+  }
+
+  const parsed = parseDraft(result.stdout, taxonomy(), text);
+  if (!parsed.ok || !parsed.draft) {
+    return json(
+      { ok: false, message: parsed.reason ?? '模型没给出可用的元信息', raw: result.stdout.slice(0, 400) },
+      422,
+    );
+  }
+
+  const merged = mergeDraft(body?.current, parsed.draft, { overwrite: body?.overwrite === true });
+  return json({
+    ok: true,
+    merged,
+    kept: merged.kept,
+    warnings: parsed.warnings,
+    evidence: parsed.draft.evidence,
+    unverified: parsed.unverified,
+    final: page.final,
+    ms: Date.now() - started,
+  });
+};
+
+const handleBatchMeta = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const input = Array.isArray(body?.urls) ? body.urls : [];
+  if (!input.length) return json({ ok: false, message: '请至少提供一个 URL' }, 400);
+  if (input.length > BATCH_LIMIT) return json({ ok: false, message: `每批最多 ${BATCH_LIMIT} 条` }, 400);
+
+  const { rows } = readRows();
+  const seen = new Set<string>();
+  const pending: string[] = [];
+  const skipped: { url: string; reason: string; row?: Resource }[] = [];
+  for (const item of input) {
+    const target = normUrl(item);
+    const value = target.url;
+    if (!value) {
+      skipped.push({ url: String(item), reason: target.error ?? 'URL 无效' });
+      continue;
+    }
+    const key = urlKey(value);
+    if (!key) {
+      skipped.push({ url: String(item), reason: target.error ?? 'URL 无效' });
+      continue;
+    }
+    if (seen.has(key)) {
+      skipped.push({ url: value, reason: '本批重复' });
+      continue;
+    }
+    seen.add(key);
+    const existing = rows.find((row) => urlKey(row.url) === key);
+    if (existing) {
+      skipped.push({ url: value, reason: '库中已存在', row: existing });
+      continue;
+    }
+    pending.push(value);
+  }
+
+  const task = tasks.start('batch-meta', BATCH_STEPS);
+  void runBatchMetaTask(task.id, pending, skipped);
+  return json({ ok: true, id: task.id }, 202);
+};
+
+/** 并发 4 抓页面；每完成一条就推进「x/y」并记一行日志，前端轮询就能看到进展 */
+const runBatchMetaTask = async (
+  id: string,
+  pending: string[],
+  skipped: { url: string; reason: string; row?: Resource }[],
+) => {
+  try {
+    tasks.mark(id, 'fetch', 'running', `0/${pending.length}`);
+    tasks.progress(id, 0, pending.length);
+    const drafts: unknown[] = new Array(pending.length);
+    let cursor = 0;
+    let done = 0;
+    const worker = async () => {
+      while (cursor < pending.length) {
+        const index = cursor++;
+        const url = pending[index];
+        const meta = await fetchMeta(url);
+        drafts[index] = {
+          title: clean('title' in meta ? meta.title : '', 80),
+          url,
+          section: [],
+          facets: {},
+          desc: clean('desc' in meta ? meta.desc : '', 120),
+          added: new Date().toISOString().slice(0, 10),
+          note: 'note' in meta ? meta.note : 'reason' in meta ? meta.reason : '',
+        };
+        done++;
+        tasks.progress(id, done, pending.length);
+        tasks.mark(id, 'fetch', 'running', `${done}/${pending.length}`);
+        tasks.detail(id, meta.ok ? `✓ ${url}` : `✗ ${url}（${'reason' in meta ? meta.reason : '抓不到'}）`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, worker));
+    const filled = (drafts as { title: string }[]).filter((draft) => draft.title).length;
+    tasks.mark(id, 'fetch', 'ok', `${filled}/${pending.length} 条拿到标题`);
+    tasks.complete(id, {
+      message: `已抓取 ${pending.length} 条（${filled} 条拿到标题），另外 ${skipped.length} 条被跳过`,
+      result: { ok: true, drafts, skipped },
+    });
+  } catch (error) {
+    const message = `批量抓取失败：${gitError(error)}`;
+    tasks.fail(id, { message, result: { ok: false, message } });
+  }
+};
+
+const handleBatchAdd = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const input = Array.isArray(body?.rows) ? body.rows : [];
+  if (!input.length) return json({ ok: false, message: '没有待写入的草稿' }, 400);
+  if (input.length > BATCH_LIMIT) return json({ ok: false, message: `每批最多 ${BATCH_LIMIT} 条` }, 400);
+
+  const { raw, rows } = readRows();
+  const occupied = new Set(rows.map((row) => urlKey(row.url)));
+  const prepared = [];
+  for (let index = 0; index < input.length; index++) {
+    const item = input[index];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return json({ ok: false, message: `第 ${index + 1} 条草稿不是对象` }, 400);
+    }
+    const target = normUrl((item as Record<string, unknown>).url);
+    if (!target.url) return json({ ok: false, message: `第 ${index + 1} 条：${target.error}` }, 400);
+    const key = urlKey(target.url);
+    if (occupied.has(key)) return json({ ok: false, message: `第 ${index + 1} 条已在库中或与本批重复：${target.url}` }, 409);
+    const source = item as Record<string, unknown>;
+    const row = {
+      title: clean(source.title, 80),
+      url: target.url,
+      section: source.section ?? [],
+      facets: source.facets ?? {},
+      desc: clean(source.desc, 120),
+      added: source.added || new Date().toISOString().slice(0, 10),
+    };
+    if (!row.title) return json({ ok: false, message: `第 ${index + 1} 条标题不能为空` }, 400);
+    if (!row.desc) return json({ ok: false, message: `第 ${index + 1} 条简介不能为空` }, 400);
+    occupied.add(key);
+    prepared.push(row);
+  }
+  if (body?.dryRun === true) {
+    const { errors } = validateRows([...rows, ...prepared], taxonomy());
+    if (errors.length) return json({ ok: false, message: '草稿校验未通过', errors }, 400);
+    return json({ ok: true, message: '草稿有效' });
+  }
+  return saveEdit([...rows, ...prepared], raw, `已批量新增 ${prepared.length} 条资源`);
+};
+
+/** 书签导入：书签里没有简介，占位文案写实情，导入后一概记为「待看」 */
+const IMPORT_DESC = '待补：从书签导入，简介还没写';
+
+const handleImportBookmarks = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const html = typeof body?.html === 'string' ? body.html : '';
+  if (!html) return json({ ok: false, message: '没读到书签文件内容' }, 400);
+  if (html.length > 8_000_000) return json({ ok: false, message: '书签文件太大（上限 8 MB）' }, 413);
+
+  const parsed = parseBookmarks(html);
+  if (!parsed.items.length) {
+    return json({ ok: false, message: '文件里没找到链接，最好选浏览器导出的「书签 HTML」' }, 422);
+  }
+
+  if (body?.commit === true) {
+    const input = Array.isArray(body?.rows) ? body.rows : [];
+    if (!input.length) return json({ ok: false, message: '没有待导入的条目' }, 400);
+    const { raw, rows } = readRows();
+    const occupied = new Set(rows.map((row) => urlKey(row.url)));
+    const prepared = [];
+    const missing = [];
+    for (const item of input) {
+      if (!item || typeof item !== 'object') continue;
+      const source = item as Record<string, unknown>;
+      const target = normUrl(source.url);
+      if (!target.url) continue;
+      const key = urlKey(target.url);
+      if (occupied.has(key)) continue;
+      const section = Array.isArray(source.section) ? source.section : [];
+      if (!section.length) {
+        missing.push(target.url);
+        continue;
+      }
+      occupied.add(key);
+      prepared.push({
+        title: clean(source.title, 80) || tidyTitle('', target.url),
+        url: target.url,
+        section,
+        facets: source.facets && typeof source.facets === 'object' ? source.facets : {},
+        desc: clean(source.desc, 120) || IMPORT_DESC,
+        added: source.added || new Date().toISOString().slice(0, 10),
+        read: false,
+      });
+    }
+    if (missing.length) {
+      return json({ ok: false, message: `还有 ${missing.length} 条没选分区`, missing }, 400);
+    }
+    if (!prepared.length) return json({ ok: false, message: '这些条目都已存在，没新增' }, 409);
+    return saveEdit([...rows, ...prepared], raw, `已导入 ${prepared.length} 条（都标为待看）`);
+  }
+
+  const { rows } = readRows();
+  const occupied = new Set(rows.map((row) => urlKey(row.url)));
+  const skipped: { url: string; reason: string }[] = [];
+  const drafts = [];
+  for (const item of parsed.items) {
+    const key = urlKey(item.url);
+    if (!key) {
+      skipped.push({ url: item.url, reason: 'URL 无效' });
+      continue;
+    }
+    if (occupied.has(key)) {
+      skipped.push({ url: item.url, reason: '库里已有' });
+      continue;
+    }
+    occupied.add(key);
+    const rule = suggestFor(item.url, taxonomy());
+    drafts.push({
+      title: tidyTitle(item.title, item.url),
+      url: item.url,
+      section: rule?.section ?? [],
+      facets: rule?.facets ?? {},
+      desc: IMPORT_DESC,
+      added: new Date().toISOString().slice(0, 10),
+      folder: item.folder,
+      guessed: Boolean(rule),
+    });
+  }
+  return json({ ok: true, drafts, skipped, total: parsed.total });
 };
 
 const handleEdit = async (request: Request) => {
@@ -145,143 +589,250 @@ const handleEdit = async (request: Request) => {
     return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   }
 
-  const action = String(body.action ?? '');
-  const { raw, rows } = readRows();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return json({ ok: false, message: '请求体必须是 JSON 对象' }, 400);
+  }
+  const action = body.action;
+  if (action !== 'add' && action !== 'update' && action !== 'delete') {
+    return json({ ok: false, message: '未知操作，只接受 add / update / delete' }, 400);
+  }
   const target = normUrl(body.url);
-  if (target.error) return json({ ok: false, message: target.error }, 400);
-  const url = target.url as string;
+  if (!target.url) return json({ ok: false, message: target.error }, 400);
 
-  const index = rows.findIndex((r) => sameUrl(String(r.url), url));
-
-  if (action === 'add') {
-    if (index >= 0) return json({ ok: false, message: `这条已在库里：${rows[index].url}` }, 409);
-    const row: LinkRow = {
-      title: clean(body.title, 80),
-      url,
-      section: readSections(body),
-      facets: readFacets(body),
-      desc: clean(body.desc, 120),
-      added: clean(body.added, 10) || new Date().toISOString().slice(0, 10),
-    };
-    if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
-    if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
-    const next = [...rows, row];
-    const { errors } = validateRows(next, taxonomy());
-    if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
-    writeRows(next, raw);
-    return json({ ok: true, message: `已新增：${row.title}`, total: next.length });
-  }
-
-  if (index < 0) return json({ ok: false, message: `库里没有这条：${url}` }, 404);
-
+  const { raw, rows } = readRows();
+  const key = urlKey(target.url);
+  const index = rows.findIndex((r) => r && urlKey(r.url) === key);
+  const previous = rows[index];
+  if (action === 'add' && previous) return json({ ok: false, message: `这条已在库里：${previous.url}` }, 409);
+  if (action !== 'add' && !previous) return json({ ok: false, message: `库里没有这条：${target.url}` }, 404);
   if (action === 'delete') {
-    const next = rows.filter((_, i) => i !== index);
-    writeRows(next, raw);
-    return json({ ok: true, message: `已删除：${rows[index].title}`, total: next.length });
+    const response = saveEdit(rows.filter((_, i) => i !== index), raw, `已删除：${previous.title}`);
+    if (response.ok) syncEditedStatus(previous.url);
+    return response;
   }
 
-  if (action === 'update') {
-    const row: LinkRow = {
-      title: clean(body.title, 80),
-      url: rows[index].url, // url 是主键，不在这里改
-      section: readSections(body),
-      facets: readFacets(body),
-      desc: clean(body.desc, 120),
-      added: clean(body.added, 10) || rows[index].added,
-    };
-    if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
-    if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
-    const next = rows.map((r, i) => (i === index ? row : r));
-    const { errors } = validateRows(next, taxonomy());
-    if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
-    writeRows(next, raw);
-    return json({ ok: true, message: `已更新：${row.title}`, total: next.length });
+  const replacement = action === 'update' && body.newUrl !== undefined ? normUrl(body.newUrl) : target;
+  if (!replacement.url) return json({ ok: false, message: replacement.error }, 400);
+  const replacementKey = urlKey(replacement.url);
+  if (
+    action === 'update' &&
+    replacementKey !== key &&
+    rows.some((r, i) => i !== index && urlKey(r.url) === replacementKey)
+  ) {
+    return json({ ok: false, message: '新 URL 已由另一条资源使用' }, 409);
   }
 
-  return json({ ok: false, message: `未知操作：${action || '空'}` }, 400);
+  const row = {
+    ...previous,
+    title: body.title === undefined ? previous?.title : clean(body.title, 80),
+    url: replacement.url,
+    section: body.section ?? previous?.section,
+    facets: body.facets ?? previous?.facets,
+    desc: body.desc === undefined ? previous?.desc : clean(body.desc, 120),
+    added: body.added == null || body.added === '' ? previous?.added ?? new Date().toISOString().slice(0, 10) : body.added,
+    // 置顶：只有显式传 pin 时才改，没传就沿用旧值（星标、编辑、撤销都靠这一条）
+    ...(body.pin === undefined ? {} : { pin: body.pin === true }),
+    // 笔记同理：没传就沿用；传了空字符串就是删掉这篇笔记
+    ...(body.note === undefined ? {} : typeof body.note === 'string' && body.note.trim() ? { note: body.note.trim() } : { note: undefined }),
+    // 待看只在 false 时落盘：数据里没这个字段就是「已看过」，不写 read: true
+    ...(body.read === undefined ? {} : { read: body.read === false ? false : undefined }),
+  };
+  if (row.note === undefined) delete (row as { note?: unknown }).note;
+  if (row.read === undefined) delete (row as { read?: unknown }).read;
+  if (row.pin === false) delete (row as { pin?: unknown }).pin;
+  if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
+  if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
+  const next = previous ? rows.map((r, i) => (i === index ? row : r)) : [...rows, row];
+  const response = saveEdit(next, raw, `${previous ? '已更新' : '已新增'}：${row.title}`);
+  if (response.ok && action === 'update') syncEditedStatus(previous.url, row.url);
+  return response;
 };
 
-const handlePublish = async () => {
-  const { rows } = readRows();
-  const { errors, warns } = validateRows(rows, taxonomy());
-  if (errors.length) {
-    return json({ ok: false, message: `校验未通过，已中止发布（${errors.length} 个问题）`, errors }, 400);
-  }
+/** push 的目标固定是 origin 上的同名分支，不一定是当前分支的 upstream。 */
+const branchState = () => {
+  const branch = git(['branch', '--show-current']);
+  if (!branch) throw new Error('当前为分离 HEAD，请先切换到本地分支');
+  const counts = gitOr(['rev-list', '--left-right', '--count', `HEAD...refs/remotes/origin/${branch}`]);
+  const [ahead, behind] = counts ? counts.split(/\s+/).map(Number) : [null, null];
+  return { branch, ahead, behind };
+};
 
-  // 补抓新域名的图标：脚本自身幂等，已存在的直接跳过。抓不到不阻断发布，只在结果里说明。
-  const icons = await run(process.execPath, ['scripts/fetch-icons.mjs'], 180_000);
-  const iconNote = icons.ok ? '' : `图标脚本失败：${tail(icons.stderr) || '未知原因'}`;
-  if (iconNote) warns.push(iconNote);
-
-  if (!dataDirty()) {
-    return json({
-      ok: true,
-      nothing: true,
-      message: iconNote ? `没有需要发布的数据改动（${iconNote}）` : '没有需要发布的数据改动',
-      warns,
-    });
-  }
-
+const commitData = (rows: Resource[]) => {
   const { added, removed, changed } = pendingDiff(rows);
   const parts = [
     added ? `新增 ${added} 条` : '',
     removed ? `删除 ${removed} 条` : '',
     changed ? `修改 ${changed} 条` : '',
   ].filter(Boolean);
-  const message = parts.length ? `data: ${parts.join('、')}` : 'data: 更新图标';
+  const message = parts.length ? `data: ${parts.join('、')}` : 'data: 更新资源数据';
+  const paths = [DATA_REL, STATUS_REL, ICONS_REL, ICONS_DIR];
+  git(['add', '--', ...paths]);
+  // 带路径提交：工作区和暂存区里的其它改动都留在原处。
+  git(['commit', '-m', message, '--', ...paths]);
+  return message;
+};
 
-  const paths = [DATA_REL, ICONS_REL, ICONS_DIR];
-  try {
-    git(['add', '--', ...paths]);
-    // 带路径提交：只提交数据文件，工作区里其它改动留在原处
-    git(['commit', '-m', message, '--', ...paths]);
-  } catch (error) {
-    return json({ ok: false, message: `提交失败：${gitError(error)}` }, 500);
+const handlePublish = () => {
+  const running = tasks.running('publish');
+  if (running.length) {
+    return json({ ok: false, message: '上一次发布还在进行中，等它结束再试', id: running[0].id }, 409);
   }
+  const task = tasks.start('publish', PUBLISH_STEPS);
+  void runPublishTask(task.id);
+  return json({ ok: true, id: task.id }, 202);
+};
 
-  const hash = gitOr(['rev-parse', '--short', 'HEAD']);
-  const branch = gitOr(['rev-parse', '--abbrev-ref', 'HEAD'], 'master');
-
+/** 校验 → 补图标 → 提交 → 推送。
+ *  每一步都写进任务快照，所以前端能显示「做到哪一步」「图标补到第几个域名」。 */
+const runPublishTask = async (id: string) => {
   try {
-    git(['push', 'origin', branch]);
-  } catch (error) {
-    const detail = gitError(error);
-    const rejected = /rejected|non-fast-forward|fetch first/i.test(detail);
-    return json(
-      {
-        ok: false,
-        pushed: false,
-        hash,
-        message: rejected
-          ? `本地已提交 ${hash}，但远端有新提交，push 被拒。先在终端跑 git pull --rebase 再发布。`
-          : `本地已提交 ${hash}，但 push 失败：${detail}`,
-      },
-      502,
-    );
-  }
+    tasks.mark(id, 'check', 'running');
+    const { branch, ahead, behind } = branchState();
+    if (behind) {
+      const message = `落后 origin/${branch} ${behind} 个提交，请先在终端同步再发布`;
+      return tasks.fail(id, { stepId: 'check', message, result: { ok: false, message } });
+    }
+    tasks.mark(id, 'check', 'ok', `${branch}${ahead ? ` · 待推送 ${ahead}` : ''}`);
 
-  return json({ ok: true, message: `${message}（${hash}）已推送`, hash, branch, warns });
+    let message = '';
+    const warns: string[] = [];
+    if (dataDirty()) {
+      const { rows } = readRows();
+      const validation = validateRows(rows, taxonomy());
+      if (validation.errors.length) {
+        const detail = `校验未通过，已中止发布（${validation.errors.length} 个问题）`;
+        return tasks.fail(id, {
+          stepId: 'commit',
+          message: detail,
+          result: { ok: false, message: detail, errors: validation.errors },
+        });
+      }
+      warns.push(...validation.warns);
+
+      tasks.mark(id, 'icons', 'running');
+      let total = 0;
+      let done = 0;
+      const icons = await spawnLines(process.execPath, ['scripts/fetch-icons.mjs'], {
+        timeout: 180_000,
+        onLine: (line) => {
+          const plan = line.match(/(\d+) 个待抓/);
+          if (plan) {
+            total = Number(plan[1]);
+            tasks.progress(id, 0, total);
+            return;
+          }
+          if (!/^[✓✗]/.test(line)) return;
+          done++;
+          tasks.progress(id, done, total || done);
+          tasks.detail(id, line.trim());
+        },
+      });
+      if (!icons.ok) warns.push(`图标脚本失败：${tail(icons.stderr) || '未知原因'}`);
+      tasks.mark(
+        id,
+        'icons',
+        icons.ok ? 'ok' : 'fail',
+        total ? `${done}/${total} 个域名` : icons.ok ? '没有要抓的域名' : '脚本报错，已跳过',
+      );
+
+      if (git(['branch', '--show-current']) !== branch) {
+        const detail = '分支已切换，请重新确认发布';
+        return tasks.fail(id, { stepId: 'commit', message: detail, result: { ok: false, message: detail } });
+      }
+      tasks.mark(id, 'commit', 'running');
+      if (dataDirty()) {
+        try {
+          message = commitData(rows);
+        } catch (error) {
+          const detail = `提交失败：${gitError(error)}`;
+          return tasks.fail(id, { stepId: 'commit', message: detail, result: { ok: false, message: detail } });
+        }
+      }
+      tasks.mark(id, 'commit', message ? 'ok' : 'skip', message || '没有需要提交的数据改动');
+    } else {
+      tasks.mark(id, 'icons', 'skip', '数据没有改动');
+      tasks.mark(id, 'commit', 'skip', '数据没有改动');
+    }
+
+    if (!message && ahead === 0) {
+      const detail = '没有需要推送的改动';
+      return tasks.complete(id, { message: detail, result: { ok: true, nothing: true, message: detail, warns } });
+    }
+
+    tasks.mark(id, 'push', 'running');
+    const hash = git(['rev-parse', '--short', 'HEAD']);
+    try {
+      git(['push', 'origin', `refs/heads/${branch}:refs/heads/${branch}`]);
+    } catch (error) {
+      const detail = gitError(error);
+      const rejected = /rejected|non-fast-forward|fetch first/i.test(detail);
+      const explanation = rejected
+        ? `本地已提交 ${hash}，推送被拒。请在终端检查远端分支，再重试推送。`
+        : `本地已提交 ${hash}，尚未推送：${detail}`;
+      return tasks.fail(id, {
+        stepId: 'push',
+        message: explanation,
+        result: { ok: false, pushed: false, hash, message: explanation },
+      });
+    }
+
+    tasks.mark(id, 'push', 'ok', hash);
+    const detail = `${message || '本地提交'}（${hash}）已推送`;
+    return tasks.complete(id, { message: detail, result: { ok: true, message: detail, hash, branch, warns } });
+  } catch (error) {
+    const detail = `发布失败：${gitError(error)}`;
+    return tasks.fail(id, { message: detail, result: { ok: false, message: detail } });
+  }
 };
 
 const handleStatus = () => {
   const { rows } = readRows();
-  const { added, removed, changed } = pendingDiff(rows);
-  const dirty = added + removed + changed > 0 || dataDirty();
   return json({
     ok: true,
-    dirty,
-    added,
-    removed,
-    changed,
-    branch: gitOr(['rev-parse', '--abbrev-ref', 'HEAD'], '?'),
+    dirty: dataDirty(),
+    ...pendingDiff(rows),
+    ...branchState(),
     head: gitOr(['rev-parse', '--short', 'HEAD'], '?'),
   });
+};
+
+const handleMaintenance = () => {
+  const { rows } = readRows();
+  return json({ ok: true, tasks: maintenanceTasks(rows, readStatuses()) });
+};
+
+const handleRecheck = async (request: Request) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
+  }
+  const target = normUrl(body?.url);
+  if (!target.url) return json({ ok: false, message: target.error }, 400);
+  const { rows } = readRows();
+  const row = rows.find((item) => urlKey(item.url) === urlKey(target.url as string));
+  if (!row) return json({ ok: false, message: '链接不存在（可能已被改动）' }, 404);
+
+  const status = datedStatus(await probeLink(row.url));
+  const statuses = readStatuses();
+  statuses[row.url] = status;
+  writeStatuses(statuses);
+  return json({ ok: true, status, tasks: maintenanceTasks(rows, { [row.url]: status }) });
 };
 
 /**
  * 浏览器发的跨站请求一定带 Origin（同源 POST 也带）；没有 Origin 的是 curl / 脚本。
  * 挡住「随便点开一个恶意页面就能往本地 dev server 写盘、甚至 push」这种情况。
  */
+const handleTask = (url: URL) => {
+  const id = url.searchParams.get('id') ?? '';
+  if (!id) return json({ ok: true, tasks: tasks.running() });
+  const snapshot = tasks.get(id);
+  if (!snapshot) return json({ ok: false, message: '没有这个任务（本地服务重启后会丢）' }, 404);
+  return json({ ok: true, task: snapshot });
+};
+
 const sameOrigin = (origin: string | null, host: string) => {
   if (!origin) return true;
   try {
@@ -315,22 +866,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
     // 把「只接受 http(s)」「含空白」这类具体原因透给前端，不要一律报成「不能为空」
     if (target.error) return json({ ok: false, message: target.error }, 400);
-    return json(await fetchMeta(target.url as string));
+    const meta = await fetchMeta(target.url as string);
+    // 采集/导入那条路要的「落点建议」：命中域名规则才给，给不出就是 null
+    return json({ ...meta, rules: suggestFor(target.url as string, taxonomy()) });
   }
 
-  if (route === 'edit' && method === 'POST') return handleEdit(context.request);
-
-  if (route === 'status' && method === 'GET') {
-    if (!existsSync(resolve(ROOT, DATA_REL))) return json({ ok: false, message: '找不到 links.yaml' }, 500);
-    return handleStatus();
-  }
-
-  if (route === 'publish' && method === 'POST') {
-    try {
-      return await handlePublish();
-    } catch (error) {
-      return json({ ok: false, message: `发布失败：${gitError(error)}` }, 500);
-    }
+  try {
+    if (route === 'edit' && method === 'POST') return await handleEdit(context.request);
+    if (route === 'batch-meta' && method === 'POST') return await handleBatchMeta(context.request);
+    if (route === 'batch-add' && method === 'POST') return await handleBatchAdd(context.request);
+    if (route === 'import-bookmarks' && method === 'POST') return await handleImportBookmarks(context.request);
+    if (route === 'duplicates' && method === 'POST') return await handleDuplicates(context.request);
+    if (route === 'duplicates-scan' && method === 'GET') return handleDuplicatesScan();
+    if (route === 'ai-draft' && method === 'POST') return await handleAiDraft(context.request);
+    if (route === 'status' && method === 'GET') return handleStatus();
+    if (route === 'publish-preview' && method === 'GET') return handlePublishPreview();
+    if (route === 'maintenance' && method === 'GET') return handleMaintenance();
+    if (route === 'recheck' && method === 'POST') return await handleRecheck(context.request);
+    if (route === 'publish' && method === 'POST') return handlePublish();
+    if (route === 'task' && method === 'GET') return handleTask(context.url);
+  } catch (error) {
+    return json({ ok: false, message: `${route} 失败：${gitError(error)}` }, 500);
   }
 
   return json({ ok: false, message: `未知接口：${route || '空'}` }, 404);

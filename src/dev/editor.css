@@ -1,32 +1,39 @@
-/* dev 编辑层样式：只在 editor.ts 被加载时注入，构建产物里不出现 */
+/* dev 编辑层样式：只随 editor.ts 注入，构建产物里不出现。 */
 #dev {
-  position: fixed;
-  left: 16px;
-  bottom: 16px;
-  z-index: 90;
+  position: static;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 999px;
-  background: var(--bg-elev);
-  border: 1px solid var(--line-strong);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
-  font-size: 13px;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  color: var(--fg);
+  font-size: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 .dev-tag {
-  color: var(--fg-muted);
-  letter-spacing: 0.02em;
+  margin-right: 2px;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 #dev-state {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin-left: auto;
   color: var(--fg-muted);
-  font-size: 12px;
-  max-width: 30ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+#dev-state:empty {
+  display: none;
 }
 
 #dev-state[data-state='dirty'] {
@@ -38,94 +45,95 @@
 }
 
 #dev button,
-#dev-dialog button {
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-  border-radius: 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--bg-soft);
-  color: var(--fg);
+.dev-dialog button {
   padding: 5px 10px;
+  color: var(--fg);
+  font-size: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  cursor: pointer;
 }
 
 #dev button:hover,
-#dev-dialog button:hover {
-  border-color: var(--accent);
+.dev-dialog button:hover {
   color: var(--accent);
+  border-color: var(--accent);
 }
 
-#dev-dialog button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+.dev-dialog button.primary {
   color: var(--bg);
   font-weight: 600;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
-#dev-dialog button.primary:hover {
+.dev-dialog button.primary:hover {
   color: var(--bg);
   filter: brightness(1.06);
 }
 
-#dev-dialog button:disabled {
-  opacity: 0.55;
+.dev-dialog button:disabled,
+#dev button:disabled {
   cursor: progress;
+  opacity: 0.55;
 }
 
-#dev-dialog {
-  width: min(560px, calc(100vw - 32px));
+.dev-dialog {
+  width: min(580px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   padding: 0;
+  overflow-y: auto;
+  color: var(--fg);
+  background: var(--bg-elev);
   border: 1px solid var(--line-strong);
   border-radius: 14px;
-  background: var(--bg-elev);
-  color: var(--fg);
   box-shadow: 0 24px 70px -20px rgba(0, 0, 0, 0.5);
 }
 
-#dev-dialog::backdrop {
+.dev-dialog::backdrop {
   background: rgba(0, 0, 0, 0.42);
 }
 
 #dev-form {
   display: grid;
   gap: 12px;
-  padding: 18px 20px 16px;
+  padding: 20px;
 }
 
 #dev-form h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .dev-field {
   display: grid;
   gap: 5px;
-  font-size: 12px;
   color: var(--fg-muted);
+  font-size: 12px;
 }
 
 .dev-field input,
 .dev-field textarea,
 .dev-field select {
-  font: inherit;
-  font-size: 13px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 9px;
   color: var(--fg);
+  font-size: 13px;
   background: var(--bg);
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  padding: 7px 9px;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .dev-field textarea {
-  resize: vertical;
   line-height: 1.5;
+  resize: vertical;
 }
 
 .dev-field em {
   font-style: normal;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .dev-cols {
@@ -137,14 +145,14 @@
 .dev-topics,
 .dev-sections,
 .dev-facet {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 6px 10px 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
-  font-size: 12.5px;
   margin: 0;
+  padding: 7px 10px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 .dev-topics legend,
@@ -155,7 +163,9 @@
   font-size: 12px;
 }
 
-.dev-topics label {
+.dev-topics label,
+.dev-sections label,
+.dev-facet label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -164,10 +174,11 @@
 
 .dev-fetch {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: 8px 10px;
   color: var(--fg-muted);
+  font-size: 12px;
 }
 
 .dev-err {
@@ -194,28 +205,25 @@
   filter: brightness(1.1);
 }
 
+/* 操作区留在卡片文档流内：不遮标题，也不依赖 hover 才能发现。 */
 .dev-card-actions {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: none;
-  gap: 4px;
-}
-
-.card:hover .dev-card-actions,
-.card:focus-within .dev-card-actions {
+  position: static;
   display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: -3px;
 }
 
 .dev-card-actions button {
-  font: 12px/1 system-ui, sans-serif;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid var(--line-strong);
-  background: var(--bg-elev);
+  width: auto;
+  height: 27px;
+  padding: 3px 8px;
   color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -229,13 +237,12 @@
   border-color: var(--fail);
 }
 
-/* 分区面板：勾了哪个分区就显示哪一块分类 */
 .dev-panel {
   display: grid;
   gap: 10px;
+  padding: 10px 12px 12px;
   border: 1px dashed var(--line-strong);
   border-radius: 10px;
-  padding: 10px 12px 12px;
 }
 
 .dev-panel[hidden] {
@@ -243,11 +250,768 @@
 }
 
 .dev-panel-title {
-  font-size: 12px;
   color: var(--fg-muted);
-  letter-spacing: 0.04em;
+  font-size: 12px;
 }
 
 .dev-panel .dev-field {
   max-width: 260px;
+}
+
+#dev-maintenance-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.dev-maintenance {
+  padding: 20px;
+}
+
+.dev-maintenance-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dev-maintenance-head h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.dev-maintenance-head p,
+.dev-maintenance-empty {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dev-maintenance-list {
+  display: grid;
+  gap: 12px;
+}
+
+.dev-maintenance-item {
+  padding: 13px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.dev-maintenance-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dev-maintenance-kind {
+  flex: none;
+  font-size: 11px;
+}
+
+.dev-maintenance-kind.fail {
+  color: var(--fail);
+}
+
+.dev-maintenance-kind.redirect {
+  color: var(--warn);
+}
+
+.dev-maintenance-reason {
+  margin: 7px 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-maintenance-url {
+  margin: 5px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dev-maintenance-url a {
+  color: var(--accent);
+}
+
+.dev-maintenance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.dev-ai-evidence {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent, var(--line));
+  border-radius: 9px;
+}
+
+.dev-ai-evidence ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 3px;
+}
+
+.dev-ai-label {
+  margin: 0;
+  font-weight: 500;
+}
+
+.dev-ai-overwrite {
+  justify-self: start;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.dev-url-feedback {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.dev-url-cleanup,
+.dev-duplicate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 10px;
+}
+
+.dev-duplicate a,
+.dev-batch-skipped a,
+.dev-publish-item a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.dev-url-note {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.dev-batch,
+.dev-publish {
+  padding: 20px;
+}
+
+.dev-batch h3,
+.dev-publish h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.dev-batch > p,
+.dev-publish-summary {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#dev-batch-urls {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 6px 0;
+  padding: 10px;
+  color: var(--fg);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  resize: vertical;
+}
+
+.dev-batch-skipped {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-batch-skipped p {
+  margin: 6px 0;
+}
+
+#dev-publish-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.dev-publish-list {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.dev-publish-list h4 {
+  margin: 9px 0 0;
+  font-size: 13px;
+}
+
+.dev-publish-item {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.dev-publish-item.added { border-left-color: var(--ok); }
+.dev-publish-item.removed { border-left-color: var(--fail); }
+.dev-publish-item.changed { border-left-color: var(--warn); }
+
+.dev-publish-item p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.dev-diff-field {
+  color: var(--fg-muted);
+}
+
+.dev-publish-extras {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-publish-extras code {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.dev-publish-plan {
+  margin: 8px 0 0;
+  padding-top: 10px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 600px) {
+  #dev-state {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  #dev-form,
+  .dev-maintenance {
+    padding: 16px;
+  }
+
+  .dev-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- 进度：顶部细条 + 步骤清单 + 可展开日志 ---- */
+.dev-progress {
+  margin: 10px 0 0;
+}
+
+.dev-progress[hidden] {
+  display: none;
+}
+
+.dev-task {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.dev-task-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.dev-task-time {
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-task-bar {
+  height: 4px;
+  overflow: hidden;
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.dev-task-bar > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.dev-task[data-status='error'] .dev-task-bar > span {
+  background: var(--fail);
+}
+
+.dev-task[data-status='ok'] .dev-task-bar > span {
+  background: var(--ok, var(--accent));
+}
+
+.dev-task-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dev-task-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--fg-muted);
+}
+
+.dev-task-steps li.is-running {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.dev-task-steps li.is-ok {
+  color: var(--fg);
+}
+
+.dev-task-steps li.is-error {
+  color: var(--fail);
+}
+
+.dev-task-mark {
+  flex: none;
+  width: 1em;
+  text-align: center;
+}
+
+.dev-task-steps small {
+  color: var(--fg-muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.dev-task-message {
+  margin: 0;
+  color: var(--fail);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.dev-task-log summary {
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.dev-task-log pre {
+  max-height: 160px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  color: var(--fg-muted);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* ---- 卡片多选 ---- */
+.dev-card-pick {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.card.is-picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.dev-selectbar {
+  position: fixed;
+  /* 要抬到 Astro dev 工具条上方：工具条固定在底部居中并拦截指针事件，
+     压在 same 高度会让「批量删除」按钮完全点不到 */
+  bottom: 76px;
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.dev-selectbar[hidden] {
+  display: none;
+}
+
+/* 浮条盖在卡片上时不能吃掉点击：容器让行，自己的按钮仍然可点 */
+.dev-selectbar {
+  pointer-events: none;
+}
+
+.dev-selectbar > * {
+  pointer-events: auto;
+}
+
+/* 浮条悬浮在卡片上会挡住最后几行的勾选框：显出来时给页面底部留出同等高度 */
+body.dev-bar-open main {
+  padding-bottom: 84px;
+}
+
+.dev-selectbar button {
+  width: auto;
+  height: 26px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.dev-selectbar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dev-selectbar button.del:hover {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+/* ---- Toast ---- */
+.dev-toasts {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(340px, calc(100vw - 40px));
+  pointer-events: none;
+}
+
+.dev-toasts:empty {
+  display: none;
+}
+
+.dev-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.55;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  animation: dev-toast-in 0.16s ease;
+}
+
+.dev-selectbar button.is-armed,
+.dev-dialog button.is-armed {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.dev-toast.is-bad {
+  border-left-color: var(--fail);
+}
+
+.dev-toast.is-warn {
+  border-left-color: var(--warn);
+}
+
+.dev-toast.is-leaving {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.dev-toast-mark {
+  flex: none;
+  width: 1em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dev-toast.is-ok .dev-toast-mark {
+  color: var(--accent);
+}
+
+.dev-toast.is-bad .dev-toast-mark {
+  color: var(--fail);
+}
+
+.dev-toast.is-warn .dev-toast-mark {
+  color: var(--warn);
+}
+
+.dev-toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dev-toast-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dev-toast-detail {
+  margin-top: 4px !important;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+
+.dev-toast-action,
+.dev-toast-close {
+  flex: none;
+  width: auto;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.dev-toast-action:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.dev-toast-close {
+  padding: 2px 6px;
+  color: var(--fg-muted);
+  border-color: transparent;
+}
+
+@keyframes dev-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ---- 命令面板 ---- */
+.dev-palette {
+  width: min(420px, calc(100vw - 32px));
+  padding: 10px;
+}
+
+.dev-palette input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--fg);
+  font-size: 13px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.dev-palette-list {
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.dev-palette-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dev-palette-list li.is-active {
+  color: var(--fg);
+  background: var(--accent-soft);
+}
+
+.dev-palette-list li small {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.dev-palette-empty {
+  color: var(--fg-muted);
+  cursor: default;
+}
+
+.dev-palette-hint {
+  margin: 8px 2px 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.dev-hint {
+  margin-left: 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ---- 置顶星标 ---- */
+.dev-card-actions button.dev-star {
+  padding: 3px 6px;
+  font-size: 13px;
+}
+
+.dev-card-actions button.dev-star.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+/* ---- 全库查重 ---- */
+.dev-scan,
+.dev-scan-list {
+  display: grid;
+  gap: 12px;
+}
+
+.dev-scan-head {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-scan-group {
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.dev-scan-label {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.dev-scan-group ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-scan-group li {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.dev-scan-group a {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.dev-scan-group a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dev-scan-url {
+  color: var(--fg-muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ---------- 笔记 / 待看 / 书签导入 ---------- */
+.dev-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+}
+
+.dev-import-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dev-import-msg {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.dev-skip {
+  color: var(--fg-muted);
+}
+
+/* 「收录」书签长得像按钮，但它是链接：拖动它会带上 javascript: 协议 */
+#dev .dev-capture,
+#dev a#dev-capture {
+  padding: 5px 10px;
+  color: var(--fg);
+  font-size: 12px;
+  text-decoration: none;
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  cursor: grab;
+}
+
+#dev .dev-capture:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }

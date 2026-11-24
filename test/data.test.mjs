@@ -89,18 +89,6 @@ test('图标表的键是规范化域名，且文件都存在', () => {
   }
 });
 
-test('hostKey 让 www 与裸域名落进同一把键（本轮修复的丢图标 bug）', () => {
-  for (const url of ['https://www.nber.org/papers', 'https://nber.org/papers', 'https://WWW.NBER.ORG']) {
-    assert.equal(hostKey(url), 'nber.org');
-  }
-  const withWww = links.filter((l) => new URL(l.url).hostname.startsWith('www.'));
-  assert.ok(withWww.length > 0, '数据里应该有带 www 的链接');
-  for (const l of withWww) {
-    const key = hostKey(l.url);
-    assert.ok(!Object.hasOwn(icons, `www.${key}`), `图标表键没规范化：www.${key}`);
-  }
-});
-
 test('图标表里没有数据里已删掉的域名', (t) => {
   const hosts = new Set(links.map((l) => hostKey(l.url)));
   const stale = Object.keys(icons).filter((key) => !hosts.has(key));

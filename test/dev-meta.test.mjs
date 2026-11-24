@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { clean, normUrl, sameUrl, decodeEntities, extractMeta } = await import(
+const { clean, normUrl, decodeEntities, extractMeta } = await import(
   resolve(root, 'src/lib/dev-meta.mjs')
 );
 
@@ -42,13 +42,6 @@ test('normUrl 只放行 http(s)，拒绝含空白与解析不了的值', () => {
   assert.match(normUrl('https://').error, /解析失败/);
   assert.equal(normUrl('javascript:alert(1)').url, undefined);
   assert.match(normUrl('').error, /不能为空/);
-});
-
-test('sameUrl 只忽略结尾斜杠（不猜域名等价）', () => {
-  assert.ok(sameUrl('https://example.com/a/', 'https://example.com/a'));
-  assert.ok(sameUrl('https://example.com', 'https://example.com'));
-  assert.ok(!sameUrl('https://example.com/a', 'https://example.com/b'));
-  assert.ok(!sameUrl('https://example.com/a', 'http://example.com/a'));
 });
 
 test('decodeEntities：命名实体、数字实体、未知实体', () => {

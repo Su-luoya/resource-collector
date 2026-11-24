@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { dumpLinks, parseLinks, validateRows, diffRows, hostKey } = await import(
+const { dumpLinks, parseLinks, validateRows, diffRows, diffRowDetails, hostKey } = await import(
   resolve(root, 'src/lib/link-data.mjs')
 );
 
@@ -44,9 +44,22 @@ test('parseLinks 同时接受顶层数组与 { links: [] } 两种写法', () => 
   assert.equal(wrapped[0].title, 'A');
 });
 
-test('dumpLinks 对仓库现有 links.yaml 逐字节复现', () => {
-  const raw = readFileSync(resolve(root, 'src/data/links.yaml'), 'utf8');
-  assert.equal(dumpLinks(parseLinks(raw), raw), raw);
+test('parseLinks 拒绝错误根节点，不能把写错的文件当成空库', () => {
+  for (const raw of ['linkz: []', 'links: {}', 'null', 'text', 'links: []\nnote: 保留']) {
+    assert.throws(() => parseLinks(raw), /链接数组/);
+  }
+  assert.deepEqual(parseLinks('[]'), []);
+});
+
+test('从旧包装格式编辑、删光、再新增：保留头注释，始终写成可读的顶层数组', () => {
+  const head = '# 示例里也可能出现 - title:\n\n';
+  const wrapped = head + 'links: ' + JSON.stringify([row()]);
+  const saved = dumpLinks(parseLinks(wrapped), wrapped);
+  assert.equal(saved, head + dumpLinks([row()], ''));
+  const empty = dumpLinks([], saved);
+  assert.equal(empty, head + '[]\n');
+  assert.deepEqual(parseLinks(empty), []);
+  assert.equal(dumpLinks([row()], empty), saved);
 });
 
 test('dumpLinks 保留头部注释，并把带空白的 url 加引号', () => {
@@ -62,7 +75,8 @@ test('dumpLinks 转义双引号与反斜杠，解析回来不丢字符，facets 
   const rows = [
     row({
       title: '他说"你好"',
-      desc: 'a\\b',
+      desc: 'a\\b\r\nc',
+      url: 'https://a.example.com/tag:',
       section: ['data', 'packages'],
       facets: {
         data: { kind: 'code', topic: ['micro', 'asset'] },
@@ -71,10 +85,7 @@ test('dumpLinks 转义双引号与反斜杠，解析回来不丢字符，facets 
     }),
   ];
   const back = parseLinks(dumpLinks(rows, ''));
-  assert.equal(back[0].title, '他说"你好"');
-  assert.equal(back[0].desc, 'a\\b');
-  assert.deepEqual(back[0].section, ['data', 'packages']);
-  assert.deepEqual(back[0].facets, rows[0].facets);
+  assert.deepEqual(back, rows);
 });
 
 test('合法数据零 error，http 只给 warn', () => {
@@ -88,6 +99,38 @@ test('重复 url：与 links[0] 重复也要报错（下标 0 是 falsy 的老 b
   const { errors } = validateRows([row(), row({ title: 'B' })], taxonomy, today);
   assert.equal(errors.length, 1);
   assert.match(errors[0], /links\[1\]\.url 与 links\[0\] 重复/);
+});
+
+test('去重与编辑使用同一个 URL 主键：规范化主机和路径，不改查询值或锚点', () => {
+  const urls = [
+    'https://EXAMPLE.org:443/a/?q=1#top', 'https://example.org/a?q=1#top',
+    'https://example.org/a?q=/', 'https://example.org/a?q=',
+    'https://example.org/a#part/', 'https://example.org/a#part', 'http://example.org/a#part',
+  ];
+  const { errors } = validateRows(urls.map((url) => row({ url })), taxonomy, today);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /links\[1\]\.url 与 links\[0\] 重复/);
+  assert.deepEqual(diffRows([row({ url: urls[0] })], [row({ url: urls[1] })]), { added: 0, removed: 0, changed: 1 });
+});
+
+test('空行和写回会丢失的未知字段给出行号，不抛异常', () => {
+  const { errors, warns } = validateRows([null, row({ unexpected: '不要默默删掉', url: 'http://a.example.com' })], taxonomy, today);
+  assert.match(errors.join('\n'), /links\[0\] 不是对象/);
+  assert.match(errors.join('\n'), /links\[1\]\.unexpected/);
+  assert.equal(warns.length, 1);
+});
+
+test('note / read 是合法字段：能写回，坏类型会被拦下', () => {
+  const ok = validateRows(
+    [row({ url: 'http://a.example.com', note: '- 关键结论\n- 下一步', read: false })],
+    taxonomy,
+    today,
+  );
+  assert.deepEqual(ok.errors, []);
+
+  const bad = validateRows([row({ url: 'http://b.example.com', note: 42, read: 'yes' })], taxonomy, today);
+  assert.match(bad.errors.join('\n'), /links\[0\]\.note/);
+  assert.match(bad.errors.join('\n'), /links\[0\]\.read/);
 });
 
 test('分区：未登记、重复、非数组、空数组都会被拦下', () => {
@@ -162,6 +205,13 @@ test('必填字段缺失与日期格式都会被拦下', () => {
   assert.match(warns.join('\n'), /links\[3\]\.added 是未来日期/);
 });
 
+test('added 必须是实际存在的日期：接受闰日，不接受溢出或非字符串', () => {
+  for (const added of ['2025-02-29', '2026-04-31', '2026-13-01', ['2024-02-29']]) {
+    assert.match(validateRows([row({ added })], taxonomy, today).errors.join('\n'), /links\[0\]\.added/);
+  }
+  assert.deepEqual(validateRows([row({ added: '2024-02-29' })], taxonomy, today).errors, []);
+});
+
 test('url 必须是 http(s)、不能含空白、必须能解析', () => {
   const { errors } = validateRows(
     [
@@ -201,4 +251,83 @@ test('diffRows 按 url 给出 新增 / 删除 / 修改', () => {
   const after = [row({ title: 'A 站改名' }), row({ url: 'https://c.example.com' })];
   assert.deepEqual(diffRows(before, after), { added: 1, removed: 1, changed: 1 });
   assert.deepEqual(diffRows(before, before), { added: 0, removed: 0, changed: 0 });
+});
+
+test('diffRowDetails：同名唯一的一删一增配成修改，而不是删+增', () => {
+  const before = [row({ url: 'https://a.example.com/old' })];
+  const after = [row({ url: 'https://a.example.com/new' })];
+  const details = diffRowDetails(before, after);
+  assert.equal(details.added.length, 0);
+  assert.equal(details.removed.length, 0);
+  assert.equal(details.changed.length, 1);
+  assert.equal(details.changed[0].before.url, 'https://a.example.com/old');
+  assert.equal(details.changed[0].after.url, 'https://a.example.com/new');
+  assert.deepEqual(diffRows(before, after), { added: 0, removed: 0, changed: 1 });
+});
+
+test('diffRowDetails：同名不唯一时不猜测配对，仍按删除 + 新增', () => {
+  const before = [row({ url: 'https://a.example.com/1' })];
+  const after = [
+    row({ url: 'https://a.example.com/2' }),
+    row({ url: 'https://a.example.com/3' }),
+  ];
+  const details = diffRowDetails(before, after);
+  assert.equal(details.changed.length, 0);
+  assert.equal(details.added.length, 2);
+  assert.equal(details.removed.length, 1);
+});
+
+test('diffRowDetails：同名资源很多时不做配对，删除不会被藏成修改', () => {
+  const before = [
+    row({ title: 'GitHub', url: 'https://github.com/a' }),
+    row({ title: 'GitHub', url: 'https://github.com/b' }),
+  ];
+  const after = [row({ title: 'GitHub', url: 'https://github.com/c' })];
+  const details = diffRowDetails(before, after);
+  assert.equal(details.changed.length, 0);
+  assert.equal(details.removed.length, 2);
+  assert.equal(details.added.length, 1);
+});
+
+test('diffRowDetails：两侧同名各一条但内容不同，也只当修改', () => {
+  const details = diffRowDetails(
+    [row({ url: 'https://a.example.com', desc: '旧' })],
+    [row({ url: 'https://a.example.com', desc: '新' })],
+  );
+  assert.equal(details.changed.length, 1);
+  assert.equal(details.changed[0].before.desc, '旧');
+  assert.equal(details.added.length + details.removed.length, 0);
+});
+
+test('pin: 只在置顶时写出字段，未置顶的数据与以前逐字一致', () => {
+  const plain = row();
+  const yaml = dumpLinks([plain], '');
+  assert.equal(yaml.includes('pin'), false);
+
+  const pinned = row({ pin: true });
+  const out = dumpLinks([pinned], '');
+  assert.match(out, /pin: true/);
+
+  const back = parseLinks(out);
+  assert.equal(back[0].pin, true);
+  assert.deepEqual(validateRows(back, taxonomy).errors, []);
+});
+
+test('pin: 非布尔值被校验拦下，false 视为「未置顶」', () => {
+  const bad = row({ pin: 'yes' });
+  assert.ok(validateRows([bad], taxonomy).errors.some((e) => e.includes('pin')));
+
+  const off = row({ pin: false });
+  assert.deepEqual(validateRows([off], taxonomy).errors, []);
+  assert.equal(dumpLinks([off], '').includes('pin'), false);
+});
+
+test('diffRowDetails: 只改 pin 算修改，不算增删', () => {
+  const before = [row()];
+  const after = [row({ pin: true })];
+  const detail = diffRowDetails(before, after);
+  assert.equal(detail.added.length, 0);
+  assert.equal(detail.removed.length, 0);
+  assert.equal(detail.changed.length, 1);
+  assert.deepEqual(diffRows(before, after), { added: 0, removed: 0, changed: 1 });
 });

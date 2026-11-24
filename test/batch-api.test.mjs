@@ -1,0 +1,178 @@
+// dev 期三个新接口的端到端测试：`npm test`
+//
+// 覆盖 api/duplicates（相似候选 + 跟踪参数建议）、api/batch-meta（只抓草稿不写盘）、
+// api/batch-add（整批校验后一次写入）与 api/publish-preview（发布前结构化差异）。
+// batch-meta 的抓取分支需要联网，这里只测「被跳过」的分支与上限，全部离线。
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { dev } from 'astro';
+import { parseLinks } from '../src/lib/link-data.mjs';
+import { runTask } from './helpers/task.mjs';
+
+test('批量导入、相似候选与发布前差异：都只经 dev 接口，写盘一次到位', async (t) => {
+  const root = process.cwd();
+  const scratch = join(root, '.scratch');
+  mkdirSync(scratch, { recursive: true });
+  const tmp = mkdtempSync(join(scratch, 'batch-api-'));
+  const repo = join(tmp, 'work');
+  mkdirSync(repo);
+  process.chdir(repo);
+  t.after(() => {
+    process.chdir(root);
+    rmSync(tmp, { recursive: true, force: true });
+  });
+  for (const key of Object.keys(process.env)) if (key.startsWith('GIT_')) delete process.env[key];
+  Object.assign(process.env, {
+    GIT_CONFIG_GLOBAL: join(tmp, 'gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+    ASTRO_TELEMETRY_DISABLED: '1',
+    ASTRO_DISABLE_UPDATE_CHECK: 'true',
+    TMPDIR: tmp,
+  });
+
+  for (const dir of ['src/pages', 'src/lib', 'src/data', 'public/icons']) mkdirSync(dir, { recursive: true });
+  for (const file of [
+    'src/middleware.ts',
+    'src/lib/dev-meta.mjs',
+    'src/lib/link-data.mjs',
+    'src/lib/link-maintenance.mjs',
+    'src/lib/link-quality.mjs',
+    'src/lib/dev-task.mjs',
+    'src/lib/icon-cache.mjs',
+    'src/lib/ai-draft.mjs',
+    'src/lib/link-rules.mjs',
+    'src/lib/bookmarks-html.mjs',
+    'src/data/taxonomy.json',
+  ]) {
+    cpSync(join(root, file), file);
+  }
+  writeFileSync('src/pages/index.astro', 'fixture');
+  writeFileSync('public/icons/.gitkeep', '');
+  writeFileSync('src/data/icons.json', '{}\n');
+  writeFileSync('src/data/link-status.json', '{}\n');
+  const header = '# 头注释：这个文件按时间追加，页面自己排序\n';
+  const entry = (title, url) =>
+    `- {title: ${title}, url: ${url}, section: [nav], facets: {nav: {kind: tool}}, desc: ${title}, added: 2026-01-01}`;
+  writeFileSync(
+    'src/data/links.yaml',
+    header + [entry('A', 'https://a.example.com/p'), entry('B', 'https://b.example.com')].join('\n') + '\n',
+  );
+  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('add', '-A');
+  git('commit', '-m', 'seed');
+
+  const server = await dev({ root: repo, configFile: false, logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
+  try {
+    const api = async (name, body) => {
+      const response = await fetch(`http://127.0.0.1:${server.address.port}/api/${name}`, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: body === undefined ? {} : { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { http: response.status, ...(await response.json()) };
+    };
+    const urls = () => parseLinks(readFileSync('src/data/links.yaml', 'utf8')).map((row) => row.url);
+
+    // 相似候选：清理建议与候选都只读不写。
+    const dup = await api('duplicates', { url: 'https://a.example.com/p/?utm_source=x' });
+    assert.equal(dup.ok, true);
+    assert.deepEqual(dup.cleanup, { url: 'https://a.example.com/p/', removed: ['utm_source'] });
+    assert.equal(dup.candidates[0].reason, '清理跟踪参数后相同');
+    assert.equal(urls().length, 2);
+
+    // 新增时「完全重复」必须报出来；否则用户以为库里没有，保存时才被 409 拦住。
+    const exact = await api('duplicates', { url: 'https://a.example.com/p', title: 'A' });
+    assert.equal(exact.candidates[0].reason, 'URL 已存在');
+
+    // 编辑时排除自身，不会把自己报成重复。
+    const self = await api('duplicates', {
+      url: 'https://a.example.com/p',
+      excludeUrl: 'https://a.example.com/p',
+      title: 'A',
+    });
+    assert.deepEqual(self.candidates, []);
+
+    // batch-meta：跳过分支不上网，也不写文件。
+    const skippedOnly = await runTask(server.address.port, 'batch-meta', {
+      urls: ['not a url', 'https://a.example.com/p', 'https://a.example.com/p'],
+    });
+    assert.equal(skippedOnly.ok, true);
+    assert.deepEqual(skippedOnly.drafts, []);
+    assert.match(skippedOnly.skipped[0].reason, /空白/);
+    assert.deepEqual(skippedOnly.skipped.slice(1).map((item) => item.reason), ['库中已存在', '本批重复']);
+
+    const tooMany = await api('batch-meta', { urls: Array.from({ length: 21 }, (_, i) => `https://x${i}.example.com`) });
+    assert.equal(tooMany.http, 400);
+    assert.match(tooMany.message, /最多 20 条/);
+
+    // batch-add：先干跑校验，失败时一个字节都不写。
+    const draft = (url, patch = {}) => ({
+      title: url.replace(/\W/g, '').slice(0, 20) || 'C',
+      url,
+      section: ['nav'],
+      facets: { nav: { kind: 'tool' } },
+      desc: '示例',
+      added: '2026-01-01',
+      ...patch,
+    });
+    const bad = await api('batch-add', {
+      rows: [draft('https://c.example.com', { section: ['nope'] })],
+      dryRun: true,
+    });
+    assert.equal(bad.http, 400);
+    assert.match(bad.errors.join('\n'), /section/);
+    assert.equal(urls().length, 2);
+
+    const dry = await api('batch-add', { rows: [draft('https://c.example.com')], dryRun: true });
+    assert.deepEqual({ ok: dry.ok, message: dry.message }, { ok: true, message: '草稿有效' });
+    assert.equal(urls().length, 2);
+
+    const clash = await api('batch-add', { rows: [draft('https://a.example.com/p')], dryRun: true });
+    assert.equal(clash.http, 409);
+
+    const missingDesc = await api('batch-add', { rows: [draft('https://d.example.com', { desc: ' ' })], dryRun: true });
+    assert.equal(missingDesc.http, 400);
+    assert.match(missingDesc.message, /简介不能为空/);
+
+    const written = await api('batch-add', {
+      rows: [draft('https://c.example.com'), draft('https://d.example.com')],
+    });
+    assert.equal(written.ok, true, written.message);
+    assert.deepEqual(urls(), [
+      'https://a.example.com/p',
+      'https://b.example.com',
+      'https://c.example.com/',
+      'https://d.example.com/',
+    ]);
+    assert.ok(readFileSync('src/data/links.yaml', 'utf8').startsWith(header), '头注释必须保留');
+
+    // 发布前预览：结构化列出新增，而不是只给个数。
+    const preview = await api('publish-preview');
+    assert.equal(preview.ok, true);
+    assert.deepEqual(preview.added.map((row) => row.url), ['https://c.example.com/', 'https://d.example.com/']);
+    assert.deepEqual(preview.removed, []);
+    assert.deepEqual(preview.changed, []);
+    assert.equal(preview.statusChanged, false);
+
+    // 改一条 URL：同名唯一时算「修改」，不是删一条加一条。
+    const moved = await api('edit', {
+      action: 'update',
+      url: 'https://b.example.com',
+      newUrl: 'https://b2.example.com',
+    });
+    assert.equal(moved.ok, true, moved.message);
+    const after = await api('publish-preview');
+    assert.equal(after.changed.length, 1);
+    assert.equal(after.changed[0].before.url, 'https://b.example.com');
+    assert.equal(after.changed[0].after.url, 'https://b2.example.com/');
+    assert.deepEqual(after.removed, []);
+  } finally {
+    await server.stop();
+  }
+});

@@ -1,0 +1,66 @@
+---
+import Base from '../../layouts/Base.astro';
+import { links, SLUGS, SECTIONS, hostOf, iconFor, statusOf, tagLabels, unreadCount } from '../../lib/links';
+import { renderNote } from '../../lib/note.mjs';
+import { base } from '../../lib/site';
+
+export const getStaticPaths = () =>
+  links.map((l) => ({ params: { slug: SLUGS.get(l.url) }, props: { link: l } }));
+
+const { link: l } = Astro.props;
+const host = hostOf(l);
+const icon = iconFor(l);
+const status = statusOf(l);
+const sections = SECTIONS.filter((s) => l.section.includes(s.id));
+const tags = tagLabels(l);
+const note = l.note ? renderNote(l.note) : '';
+const unread = unreadCount();
+
+const meta = [
+  l.added ? `收录于 ${l.added}` : '',
+  l.read === false ? '待看' : '',
+  l.pin ? '置顶' : '',
+].filter(Boolean).join(' · ');
+---
+
+<Base title={`${l.title} · 资源库`} description={l.desc}>
+  <div class="detail">
+    <a class="detail-back" href={base}>← 返回全部</a>
+
+    <header class="detail-head">
+      <span class="detail-titles">
+        <h1>{l.title}</h1>
+        <span class="detail-host">{host}</span>
+      </span>
+    </header>
+
+    <p class="detail-desc">{l.desc}</p>
+
+    <div class="detail-meta">
+      {meta && <span>{meta}</span>}
+      {status && (
+        <span class={status.status === 'fail' ? 'detail-bad' : ''}>
+          最近检查 {status.checked}：{status.status === 'ok' ? '可访问' : status.status === 'redirect' ? '有跳转' : '打不开'}
+        </span>
+      )}
+      {icon && <img class="detail-icon" src={icon} alt="" width="16" height="16" loading="lazy" />}
+    </div>
+
+    <div class="detail-tags">
+      {sections.map((s) => <a class="tag" href={`${base}${s.id}/`}>{s.label}</a>)}
+      {tags.map((t) => <span class="tag">{t}</span>)}
+    </div>
+
+    {l.note && <section class="detail-note"><Fragment set:html={note} /></section>}
+
+    <a class="detail-open" href={l.url} target="_blank" rel="noopener noreferrer">打开原页 →</a>
+  </div>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: l.title,
+    url: l.url,
+    description: l.desc,
+    inLanguage: 'zh-CN',
+  })} />
+</Base>
