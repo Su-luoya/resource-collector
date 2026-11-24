@@ -166,14 +166,6 @@
   desc: "经管顶刊与前沿工作论文的聚合浏览站，适合快速扫描新发表成果。"
   added: 2026-06-27
 
-- title: "Google Scholar"
-  url: https://scholar.google.com.hk/?hl=zh-CN
-  section: [nav]
-  facets:
-    nav: { kind: search }
-  desc: "谷歌学术，被引追踪与全文检索的主力入口（中文界面）。"
-  added: 2026-04-28
-
 - title: "AMiner"
   url: https://www.aminer.cn/?f=zh
   section: [nav]
@@ -501,14 +493,6 @@
   facets:
     nav: { kind: dir }
   desc: "Agent Skills 目录站，可检索并一键安装各类 AI Agent 的技能包。"
-  added: 2026-04-28
-
-- title: "SkillHub（腾讯）"
-  url: https://skillhub.tencent.com/
-  section: [nav]
-  facets:
-    nav: { kind: dir }
-  desc: "腾讯的 AI 技能市场，按分类浏览可挂载到 Agent 上的技能。"
   added: 2026-04-28
 
 - title: "SkillsBot"
