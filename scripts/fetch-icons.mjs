@@ -5,10 +5,11 @@
 //
 // 图标表的键是「规范化域名」（去掉 www.、小写，见 src/lib/link-data.mjs 的 hostKey），
 // 与页面查图标用的是同一把键——所以 www.nber.org 与 nber.org 共用一份图标。
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { hostKey, parseLinks } from '../src/lib/link-data.mjs';
+import { describeMiss, isRetryable, MISS_DAYS, pruneMisses } from '../src/lib/icon-cache.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const force = process.argv.includes('--force');
@@ -59,6 +60,23 @@ const loadMap = () => {
   }
   return map;
 };
+
+/** 取不到图标的域名记在这里，30 天内不再重试（发布里最贵的时间都花在这上面） */
+const missFile = resolve(root, '.cache/icon-misses.json');
+const loadMisses = () => {
+  if (!existsSync(missFile)) return {};
+  try {
+    return JSON.parse(readFileSync(missFile, 'utf8'));
+  } catch {
+    return {};
+  }
+};
+const saveMisses = (misses) => {
+  mkdirSync(dirname(missFile), { recursive: true });
+  writeFileSync(missFile, `${JSON.stringify(pruneMisses(misses, new Set(hosts.keys())), null, 2)}\n`);
+};
+
+const misses = loadMisses();
 
 const map = loadMap();
 
@@ -117,25 +135,44 @@ async function discover(hostname, key) {
 }
 
 const queue = [...hosts.keys()];
+
+// 已拿到图标的不再抓；已知取不到的也跳过（--force 无视缓存全量重试）
+const planned = queue.filter((key) => {
+  const existing = map[key];
+  if (!force && existing && existsSync(resolve(root, 'public', existing))) return false;
+  return true;
+});
+const toFetch = planned.filter((key) => force || !misses[key] || isRetryable(misses[key]));
+// 这行给发布进度用：前端能算出「3/24」而不用猜
+console.log(`计划：共 ${hosts.size} 个域名，${toFetch.length} 个待抓`);
+
 async function worker() {
-  while (queue.length) {
-    const key = queue.shift();
+  while (planned.length) {
+    const key = planned.shift();
     const existing = map[key];
     if (!force && existing && existsSync(resolve(root, 'public', existing))) {
       console.log(`· 已有 ${key}`);
       continue;
     }
+    if (!force && misses[key] && !isRetryable(misses[key])) {
+      console.log(`· 跳过 ${key}（${describeMiss(misses[key])}，${MISS_DAYS} 天内不重试）`);
+      continue;
+    }
     const saved = await discover(hosts.get(key), key);
     if (saved) {
       map[key] = saved;
+      delete misses[key];
       console.log(`✓ ${key} → ${saved}`);
     } else {
       delete map[key];
+      misses[key] = new Date().toISOString();
       console.log(`✗ ${key} 取不到图标，用首字母占位`);
     }
+    saveMisses(misses);
   }
 }
 await Promise.all(Array.from({ length: 6 }, worker));
+saveMisses(misses);
 
 // 数据里已经删掉的域名不再留在表里
 for (const key of Object.keys(map)) if (!hosts.has(key)) delete map[key];
