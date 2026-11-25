@@ -25,7 +25,7 @@ create index if not exists links_unread_idx on public.links (unread) where unrea
 -- 周检写进来的体检结果：一行一个 URL，只保留最近一次
 create table if not exists public.link_status (
   url      text primary key references public.links (url) on delete cascade,
-  status   text not null check (status in ('ok', 'redirect', 'fail')),
+  status   text not null check (status in ('ok', 'redirect', 'warn', 'fail')),
   code     integer,
   target   text,
   checked  date not null default current_date,

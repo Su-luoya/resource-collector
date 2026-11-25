@@ -18,6 +18,14 @@ export const classifyLink = (status, error) => {
 const errorCode = (error) =>
   error?.cause?.code || error?.name || String(error);
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 只重试「可能是抖动」的结果：5xx、429、超时与连接重置；404/403/域名不存在不重试 */
+export const transientFailure = (info) => {
+  if (info.error) return !/ENOTFOUND|EAI_AGAIN|CERT|SSL/i.test(info.error);
+  return info.code >= 500 || info.code === 429;
+};
+
 /**
  * 手动跟随每一次重定向，才能知道链上究竟是 301/308 还是临时跳转。
  * 返回形态与 link-status.json 的单条记录一致，但 checked 由调用方补上。
@@ -26,6 +34,8 @@ export const probeLink = async (url, options = {}) => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeout = options.timeout ?? 12_000;
   const maxRedirects = options.maxRedirects ?? 10;
+  const retries = options.retries ?? 1;
+  const retryDelay = options.retryDelay ?? 1_200;
   const token = options.token ?? process.env.GITHUB_TOKEN;
 
   const attempt = async (initialMethod) => {
@@ -86,18 +96,38 @@ export const probeLink = async (url, options = {}) => {
     }
   };
 
-  try {
-    return await attempt('HEAD');
-  } catch (error) {
-    const code = errorCode(error);
-    return { status: classifyLink(0, code), error: code };
+  const run = async () => {
+    try {
+      return await attempt('HEAD');
+    } catch (error) {
+      const code = errorCode(error);
+      return { status: classifyLink(0, code), error: code };
+    }
+  };
+
+  let result = await run();
+  for (let i = 0; i < retries && transientFailure(result); i++) {
+    if (retryDelay) await sleep(retryDelay);
+    result = await run();
   }
+  return result;
 };
 
 export const datedStatus = (info, checked = new Date().toISOString().slice(0, 10)) => ({
   ...info,
   checked,
 });
+
+/**
+ * 两次确认才算真坏：404/410 是确定性的，立即判 fail；5xx、429、超时这类可能只是抖动，
+ * 上一轮也没通过（或从没检查过）时先降为 warn，下一轮还是失败才写成 fail。
+ */
+export const confirmFailure = (info, previous) => {
+  if (info.status !== 'fail') return info;
+  if (info.code === 404 || info.code === 410) return info;
+  if (previous?.status === 'fail' || previous?.status === 'warn') return info;
+  return { ...info, status: 'warn' };
+};
 
 /** 只有简报约定的「同主机、纯 301/308 链、最终 HTTPS 2xx、无重复」允许自动修。 */
 export const redirectFixDecision = (original, info, rows) => {

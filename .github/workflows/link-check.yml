@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - run: npm run sync
       - name: Probe links and write results
+        id: probe
         run: node scripts/check-links.mjs
       - name: Trigger rebuild so new statuses show up
+        if: steps.probe.outputs.rebuild == 'true'
         run: gh workflow run deploy.yml --ref master

@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   applyRedirectFixes,
   classifyLink,
+  confirmFailure,
   maintenanceTasks,
   probeLink,
   redirectFixDecision,
+  transientFailure,
 } from '../src/lib/link-maintenance.mjs';
 
 const row = (url, title = url) => ({ title, url });
@@ -122,4 +124,37 @@ test('probeLink 转发 303 后改用 GET，网络与状态码分级保持稳定'
   assert.equal(classifyLink(403), 'warn');
   assert.equal(classifyLink(0, 'ENOTFOUND'), 'fail');
   assert.equal(classifyLink(0, 'AbortError'), 'warn');
+});
+
+test('抖动失败先降为 warn，下一轮仍是失败才判 fail', () => {
+  assert.equal(confirmFailure({ status: 'fail', code: 404 }, undefined).status, 'fail');
+  assert.equal(confirmFailure({ status: 'fail', code: 410 }, { status: 'ok' }).status, 'fail');
+  assert.equal(confirmFailure({ status: 'fail', code: 503 }, undefined).status, 'warn');
+  assert.equal(confirmFailure({ status: 'fail', code: 503 }, { status: 'ok' }).status, 'warn');
+  assert.equal(confirmFailure({ status: 'fail', code: 503 }, { status: 'warn' }).status, 'fail');
+  assert.equal(confirmFailure({ status: 'ok', code: 200 }, { status: 'fail' }).status, 'ok');
+
+  assert.equal(transientFailure({ status: 'fail', code: 503 }), true);
+  assert.equal(transientFailure({ status: 'warn', code: 429 }), true);
+  assert.equal(transientFailure({ status: 'fail', code: 404 }), false);
+  assert.equal(transientFailure({ status: 'fail', error: 'ENOTFOUND' }), false);
+  assert.equal(transientFailure({ status: 'warn', error: 'AbortError' }), true);
+  assert.equal(transientFailure({ status: 'ok', code: 200 }), false);
+});
+
+test('probeLink 只对可能是抖动的一次失败重试', async () => {
+  let calls = 0;
+  const flaky = async () => (++calls === 1 ? response(503) : response(200));
+  const retried = await probeLink('https://a.example.com/', { fetchImpl: flaky, retryDelay: 0 });
+  assert.equal(retried.status, 'ok');
+  assert.equal(calls, 2);
+
+  calls = 0;
+  const missing = async () => {
+    calls++;
+    return response(404);
+  };
+  const once = await probeLink('https://a.example.com/', { fetchImpl: missing, retryDelay: 0 });
+  assert.equal(once.status, 'fail');
+  assert.equal(calls, 1);
 });
