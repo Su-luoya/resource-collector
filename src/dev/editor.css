@@ -696,9 +696,8 @@
 
 .dev-selectbar {
   position: fixed;
-  /* 要抬到 Astro dev 工具条上方：工具条固定在底部居中并拦截指针事件，
-     压在 same 高度会让「批量删除」按钮完全点不到 */
-  bottom: 76px;
+  /* Astro 的 dev 工具条已在 astro.config.mjs 关掉，底部空出来，浮条贴着底边走 */
+  bottom: 20px;
   left: 50%;
   z-index: 70;
   display: flex;
@@ -728,7 +727,7 @@
 
 /* 浮条悬浮在卡片上会挡住最后几行的勾选框：显出来时给页面底部留出同等高度 */
 body.dev-bar-open main {
-  padding-bottom: 84px;
+  padding-bottom: 76px;
 }
 
 .dev-selectbar button {
