@@ -139,7 +139,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   let batchReviewed: Draft[] = [];
   let batchIndex = 0;
   let batchSkippedRows: Skipped[] = [];
-  let pendingPublish: ApiReply | null = null;
   let publishTaskId: string | null = null;
   let publishFinished = false;
 
@@ -1311,7 +1310,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
         toast(preview.message || '读取变更预览失败', { tone: 'bad' });
         return;
       }
-      pendingPublish = status;
       publishFinished = false;
       publishConfirm.textContent = '确认发布';
       publishProgress.hidden = true;
@@ -1348,7 +1346,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       });
       return;
     }
-    pendingPublish = null;
     publishBtn.textContent = '发布';
     const warns = res.warns ?? [];
     say(res.message || '已推送', warns.length ? 'dirty' : 'idle');
@@ -1388,8 +1385,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       location.reload();
       return;
     }
-    const status = pendingPublish;
-    if (!status) return;
+    // 不拿 pendingPublish 做闸门：整页重载后接着跑的那次失败发布，这里本来就没有预览状态，
+    // 拦住只会让 Toast 上的「重试」变成一个空的按钮。发布本身在服务端还要过校验。
     publishConfirm.disabled = true;
     publishErr.hidden = true;
     publishProgress.hidden = false;
@@ -1414,7 +1411,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       location.reload();
       return;
     }
-    pendingPublish = null;
     publishDlg.close();
   };
 
@@ -1422,7 +1418,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   publishDlg.addEventListener('cancel', (event) => {
     // 发布中允许关掉对话框：任务在服务端继续跑，工具条上的进度仍能看到
     if (publishFinished) return closePublished(event);
-    if (!publishConfirm.disabled) pendingPublish = null;
   });
 
   // ---- 多选后的批量删除 ----
