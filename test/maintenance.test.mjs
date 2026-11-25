@@ -150,11 +150,43 @@ test('probeLink 只对可能是抖动的一次失败重试', async () => {
   assert.equal(calls, 2);
 
   calls = 0;
-  const missing = async () => {
+  const methods = [];
+  const missing = async (url, options) => {
     calls++;
+    methods.push(options.method);
     return response(404);
   };
   const once = await probeLink('https://a.example.com/', { fetchImpl: missing, retryDelay: 0 });
   assert.equal(once.status, 'fail');
-  assert.equal(calls, 1);
+  // 404 不重试，但会用 GET 复核一次：HEAD 被站点误伤时不会误判
+  assert.deepEqual(methods, ['HEAD', 'GET']);
+  assert.equal(calls, 2);
+});
+
+test('HEAD 返 404、GET 返 200 的站点不算坏', async () => {
+  const methods = [];
+  const result = await probeLink('https://hrl.example.com/', {
+    fetchImpl: async (url, options) => {
+      methods.push(options.method);
+      return options.method === 'HEAD' ? response(404) : response(200);
+    },
+    retryDelay: 0,
+  });
+  assert.deepEqual(methods, ['HEAD', 'GET']);
+  assert.equal(result.status, 'ok');
+  assert.equal(result.code, 200);
+});
+
+test('HEAD 与 GET 都是 404 时保留 GET 的结论', async () => {
+  const methods = [];
+  const result = await probeLink('https://gone.example.com/', {
+    fetchImpl: async (url, options) => {
+      methods.push(options.method);
+      return response(404);
+    },
+    retryDelay: 0,
+  });
+  assert.deepEqual(methods, ['HEAD', 'GET']);
+  assert.equal(result.status, 'fail');
+  assert.equal(result.code, 404);
 });

@@ -96,20 +96,28 @@ export const probeLink = async (url, options = {}) => {
     }
   };
 
-  const run = async () => {
+  const run = async (method) => {
     try {
-      return await attempt('HEAD');
+      return await attempt(method);
     } catch (error) {
       const code = errorCode(error);
       return { status: classifyLink(0, code), error: code };
     }
   };
 
-  let result = await run();
+  let result = await run('HEAD');
   for (let i = 0; i < retries && transientFailure(result); i++) {
     if (retryDelay) await sleep(retryDelay);
-    result = await run();
+    result = await run('HEAD');
   }
+
+  // 有些站点根本没实现 HEAD，或只对 GET 放行（HEAD 返 404、GET 返 200）：
+  // GET 只在 HEAD 不通过时补做一次，且不改动「是不是抖动」的重试次数。
+  if (!result.error && (result.status === 'fail' || result.status === 'warn') && result.code !== 429) {
+    const verified = await run('GET');
+    if (!verified.error) return verified;
+  }
+
   return result;
 };
 
