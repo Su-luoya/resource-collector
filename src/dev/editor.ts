@@ -433,20 +433,22 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     pick.title = '选中后可批量删除（Shift 连选）';
     pick.setAttribute('aria-label', `选中：${card.querySelector('h2')?.textContent?.trim() ?? '这条资源'}`);
     pick.addEventListener('click', (event) => {
-      event.preventDefault();
+      // 卡片本身是 <a>，但点击目标是 input，链接不会跳转，所以不能 preventDefault：
+      // 拦了默认行为，浏览器会在事件后把刚勾上的状态回滚（勾永远打不上）
       event.stopPropagation();
       const url = card.getAttribute('href') ?? '';
+      const on = pick.checked;
       if (event.shiftKey && lastPickedUrl) {
         const from = cardEls.findIndex((item) => (item.getAttribute('href') ?? '') === lastPickedUrl);
         const to = cardEls.indexOf(card);
         if (from >= 0 && to >= 0) {
           const [start, end] = from <= to ? [from, to] : [to, from];
-          for (let index = start; index <= end; index++) setPick(cardEls[index], pick.checked);
+          for (let index = start; index <= end; index++) setPick(cardEls[index], on);
           lastPickedUrl = url;
           return;
         }
       }
-      setPick(card, pick.checked);
+      setPick(card, on);
       lastPickedUrl = url;
     });
     pickBoxes.set(card, pick);
