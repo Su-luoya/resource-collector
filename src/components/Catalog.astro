@@ -214,6 +214,7 @@ const rssHref = `${base}rss.xml`;
             data-read={l.read === false ? '1' : ''}
             data-note={l.note ? '1' : ''}
             data-note-text={l.note ?? ''}
+            data-status={st?.status ?? ''}
           >
             <span class="card-top">
               <span class="fav">

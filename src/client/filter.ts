@@ -11,6 +11,9 @@ import { compareNewest, comparePinned } from '../lib/ordering.mjs';
 
 const cards = Array.from(document.querySelectorAll<HTMLAnchorElement>('.card'));
 const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip[data-facet]'));
+/** 分区导航：记住原始地址，apply 时把当前筛选拼成 hash 带上，跨页不丢状态 */
+const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('.section-link'));
+for (const link of navLinks) link.dataset.base = link.getAttribute('href') || '';
 const qInput = document.getElementById('q') as HTMLInputElement;
 const shown = document.getElementById('shown') as HTMLElement;
 const hint = document.getElementById('hint') as HTMLElement;
@@ -111,6 +114,7 @@ function apply() {
       pinned: card.dataset.pin === '1',
       unread: card.dataset.read === '1',
       hasNote: card.dataset.note === '1',
+      status: card.dataset.status || '',
     });
   let n = 0;
 
@@ -145,7 +149,7 @@ function apply() {
   const notes: string[] = [];
   if (active.some((axis) => picked[axis].size > 1)) notes.push('同一行内取并集');
   if (active.length > 1) notes.push('不同行取交集');
-  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:pinned / is:unread / is:read / is:note`);
+  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:pinned / is:unread / is:read / is:note / is:fail / is:warn`);
   hint.textContent = notes.length ? `（${notes.join('，')}）` : '';
 
   for (const chip of chips) {
@@ -160,6 +164,12 @@ function apply() {
   const frag = params.toString();
   history.replaceState(null, '', frag ? `#${frag}` : location.pathname + location.search);
 
+  // 左侧分区导航带上同一份筛选：去别的分区看看，不用重新勾一遍
+  for (const link of navLinks) {
+    const href = link.dataset.base || '';
+    link.setAttribute('href', frag && href ? `${href}#${frag}` : href);
+  }
+
   activeIndex = -1;
   cards.forEach((card) => card.classList.remove('is-active'));
 }
@@ -171,7 +181,7 @@ function readHash() {
       (params.get(axis) || '').split(',').filter((id) => id && known[axis].has(id)),
     );
   }
-  query = params.get('q') || '';
+  query = params.get('q') || new URLSearchParams(location.search).get('q') || '';
   qInput.value = query;
   apply();
 }

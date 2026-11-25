@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { highlightPattern, highlightPieces, queryMatcher } from '../src/client/search.ts';
+import { highlightPattern, highlightPieces, matchesQuery, parseQuery, queryMatcher } from '../src/client/search.ts';
 
 test('搜索词可以跨字段、换序，但必须全部命中', () => {
   const card = 'pyfixest skills 多重固定效应回归 包与文档 python';
@@ -28,4 +28,22 @@ test('高亮只切命中片段，未命中时原样返回', () => {
     ['a.b'],
   );
   assert.equal(highlightPattern('a.b').test('axb'), false);
+});
+
+test('is:fail / is:warn 按最近一次体检结果过滤', () => {
+  const target = {
+    haystack: 'x',
+    sections: [],
+    host: '',
+    pinned: false,
+    unread: false,
+    hasNote: false,
+    status: 'fail',
+  };
+
+  assert.equal(matchesQuery(parseQuery('is:fail'), target), true);
+  assert.equal(matchesQuery(parseQuery('is:warn'), target), false);
+  assert.equal(matchesQuery(parseQuery('is:fail'), { ...target, status: 'ok' }), false);
+  assert.equal(matchesQuery(parseQuery('is:warn'), { ...target, status: 'warn' }), true);
+  assert.deepEqual(parseQuery('is:fail is:warn').unknownFlags, []);
 });
