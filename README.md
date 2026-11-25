@@ -3,7 +3,7 @@
 个人网络资源（书签）仓库 + 静态展示站，部署在 GitHub Pages。
 
 - 数据：Supabase（Postgres）。构建前 `npm run sync` 把它拉到 `.cache/links.json`，页面、校验、脚本都读这份缓存
-- 站点：Astro 静态构建，零客户端框架。首页是全部 94 条的卡片墙，另有 9 个分区页：`/metrics/`（计量实证）、`/ml/`（机器学习）、`/finance/`（金融与宏观）、`/lit/`（文献搜索）、`/data/`（数据）、`/tools/`（工具）、`/writing/`（写作与汇报）、`/skill/`（agent skill）、`/scholar/`（学者主页）
+- 站点：Astro 静态构建，零客户端框架。首页是全部条目的卡片墙，另有 9 个分区页：`/metrics/`（计量实证）、`/ml/`（机器学习）、`/finance/`（金融与宏观）、`/lit/`（文献搜索）、`/data/`（数据）、`/tools/`（工具）、`/writing/`（写作与汇报）、`/skill/`（agent skill）、`/scholar/`（学者主页）
 - 输出：`/`（全部）、9 个分区页、`/links.json`（原始数据 API）、`/rss.xml`（最新 40 条）
 
 搜索支持空格分词：例如 `Python 固定效应` 会找出两个词都命中的资源，词序不限，也可以继续按分类筛选。结果数旁的「复制这 N 条」会按页面顺序把当前结果复制成 Markdown 列表，每条含标题、网址和简介。

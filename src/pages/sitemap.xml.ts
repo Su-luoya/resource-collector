@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { links, SLUGS, SECTIONS } from '../lib/links';
 import { homeUrl } from '../lib/site';
 
-/** 不引 sitemap 集成：一共就是首页 + 4 个分区页 + 每条资源的详情页，手写更省事 */
+/** 不引 sitemap 集成：一共就是首页、分区页和每条资源的详情页，手写更省事 */
 export const GET: APIRoute = () => {
   const urls = [
     homeUrl,
