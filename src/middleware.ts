@@ -219,19 +219,25 @@ const BATCH_STEPS = [{ id: 'fetch', label: '抓取页面标题与简介' }];
 /**
  * 「上次发布」的快照：每次触发重建时把当前数据写进 .cache/published.json。
  * 用它与现数据对比，得出待发布的新增/删除/修改；不再依赖 git HEAD（库已经是事实源）。
+ * status 存的是同一时刻的链接体检状态，用来判断这次重建会带上新的体检结果。
  */
-const readPublished = (): Resource[] => {
+type PublishedSnapshot = { links: Resource[]; status: Record<string, LinkStatus> };
+
+const readPublishedSnapshot = (): PublishedSnapshot => {
   try {
-    return (JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8')).links ?? []) as Resource[];
+    const raw = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8'));
+    return { links: (raw.links ?? []) as Resource[], status: (raw.status ?? {}) as Record<string, LinkStatus> };
   } catch {
-    return [];
+    return { links: [], status: {} };
   }
 };
 
-const writePublished = (rows: Resource[]) => {
+const readPublished = (): Resource[] => readPublishedSnapshot().links;
+
+const writePublished = (rows: Resource[], status: Record<string, LinkStatus>) => {
   const target = resolve(ROOT, PUBLISHED_REL);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows }, null, 2)}\n`);
+  writeFileSync(target, `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows, status }, null, 2)}\n`);
 };
 
 /** 与上次发布对比，得出待发布的新增/删除/修改条数 */
@@ -244,7 +250,14 @@ const hasPending = (rows: Resource[]) => {
 
 const handlePublishPreview = () => {
   const { rows } = readRows();
-  return json({ ok: true, ...diffRowDetails(readPublished(), rows) });
+  const published = readPublishedSnapshot();
+  const statuses = readStatuses();
+  // 只比两次快照都有的地址：上次发布后新收的行本来就没有旧状态。
+  const statusChanged = Object.keys(published.status).some(
+    (url) => JSON.stringify(published.status[url]) !== JSON.stringify(statuses[url]),
+  );
+  // 图标现在由 CI 在构建时抓（只进产物，不回写仓库），所以没有「图标文件待提交」这回事。
+  return json({ ok: true, ...diffRowDetails(published.links, rows), statusChanged, icons: [] });
 };
 
 const handleDuplicates = async (request: Request) => {
@@ -752,7 +765,7 @@ const runPublishTask = async (id: string) => {
       const detail = `触发失败：${gitError(error) || '请确认本机装了 gh 并已 gh auth login'}`;
       return tasks.fail(id, { stepId: 'dispatch', message: detail, result: { ok: false, message: detail } });
     }
-    writePublished(store.rows);
+    writePublished(store.rows, store.statuses);
     tasks.mark(id, 'dispatch', 'ok', branch);
     const parts = [
       before.added ? `新增 ${before.added} 条` : '',
@@ -770,6 +783,13 @@ const runPublishTask = async (id: string) => {
 const handleStatus = () => {
   const { rows } = readRows();
   const diff = pendingDiff(rows);
+  const branch = currentBranch();
+  // 发布只触发 Actions 重建、不推代码，所以本地未推送的提交得在工具条里提示出来。
+  const remoteRef = `origin/${branch}`;
+  const hasRemote = gitOr(['rev-parse', '--verify', remoteRef], '') !== '';
+  const count = (range: string) => (hasRemote ? Number(gitOr(['rev-list', '--count', range], '0')) : null);
+  const ahead = count(`${remoteRef}..HEAD`);
+  const behind = count(`HEAD..${remoteRef}`);
   let publishedAt: string | null = null;
   try {
     publishedAt = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8')).publishedAt ?? null;
@@ -780,6 +800,9 @@ const handleStatus = () => {
     ok: true,
     dirty: diff.added + diff.removed + diff.changed > 0,
     ...diff,
+    branch,
+    ahead,
+    behind,
     total: rows.length,
     publishedAt,
     head: gitOr(['rev-parse', '--short', 'HEAD'], '?'),

@@ -1177,10 +1177,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     if (dirty) notes.push(added || removed || changed ? `未发布：+${added} −${removed} ~${changed}` : '数据文件有未提交改动');
     if (ahead) notes.push(`${ahead} 个本地提交尚未推送`);
     if (ahead === null) notes.push(`没有 origin/${branch} 的本地记录`);
-    if (!dirty && !behind && status.ok) {
-      if (ahead) publishBtn.textContent = '重试推送';
-      else if (ahead === null) publishBtn.textContent = '推送分支';
-    }
     const summary = status.ok ? notes.join('；') || `已同步 ${branch}@${head}` : status.message || '读不到状态';
     say(summary, !status.ok || behind ? 'bad' : notes.length ? 'dirty' : 'idle');
     return summary;
@@ -1193,10 +1189,16 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   };
 
   function renderPublish(status: ApiReply, preview: PublishPreview | null) {
+    // 后端没给的字段一律当空：缺一个数组不该让整个对话框打不开。
+    const added = preview?.added ?? [];
+    const removed = preview?.removed ?? [];
+    const changed = preview?.changed ?? [];
+    const icons = preview?.icons ?? [];
+    const statusChanged = Boolean(preview?.statusChanged);
     const counts = preview
-      ? `资源 +${preview.added.length} −${preview.removed.length} ~${preview.changed.length}`
+      ? `资源 +${added.length} −${removed.length} ~${changed.length}`
       : '没有资源数据改动';
-    publishSummary.textContent = `目标：origin/${status.branch} · ${counts}`;
+    publishSummary.textContent = `目标：origin/${status.branch ?? '?'} · ${counts}`;
     publishList.replaceChildren();
 
     const group = (label: string, rows: Row[], className: string) => {
@@ -1217,13 +1219,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     };
 
     if (preview) {
-      group('新增资源', preview.added, 'added');
-      group('删除资源', preview.removed, 'removed');
-      if (preview.changed.length) {
+      group('新增资源', added, 'added');
+      group('删除资源', removed, 'removed');
+      if (changed.length) {
         const titleEl = document.createElement('h4');
-        titleEl.textContent = `修改资源（${preview.changed.length}）`;
+        titleEl.textContent = `修改资源（${changed.length}）`;
         publishList.append(titleEl);
-        for (const { before, after } of preview.changed) {
+        for (const { before, after } of changed) {
           const item = document.createElement('article');
           item.className = 'dev-publish-item changed';
           const name = document.createElement('strong');
@@ -1246,22 +1248,22 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
 
       const extras = document.createElement('div');
       extras.className = 'dev-publish-extras';
-      if (preview.statusChanged) {
+      if (statusChanged) {
         const line = document.createElement('p');
-        line.textContent = '链接体检状态有变化，将随本次发布提交。';
+        line.textContent = '链接体检状态有变化，页面重建后会跟着更新。';
         extras.append(line);
       }
-      if (preview.icons.length) {
+      if (icons.length) {
         const titleEl = document.createElement('h4');
         titleEl.textContent = '图标与图标索引变化';
         extras.append(titleEl);
-        for (const icon of preview.icons) {
+        for (const icon of icons) {
           const line = document.createElement('code');
           line.textContent = icon;
           extras.append(line);
         }
       }
-      if (!preview.added.length && !preview.removed.length && !preview.changed.length && !preview.statusChanged && !preview.icons.length) {
+      if (!added.length && !removed.length && !changed.length && !statusChanged && !icons.length) {
         const line = document.createElement('p');
         line.textContent = '资源内容、体检状态和图标均无差异，可能只有格式或注释变化。';
         extras.append(line);
@@ -1276,8 +1278,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const plan = document.createElement('p');
     plan.className = 'dev-publish-plan';
     plan.textContent = status.dirty
-      ? '步骤：校验 → 补抓缺失图标 → 提交数据 → 推送。发布时会包含该分支所有尚未推送的提交。'
-      : '推送包含该分支所有尚未推送的提交。';
+      ? '步骤：同步云端数据 → 校验 → 补抓缺失图标 → 触发 Actions 重建。'
+      : '只触发一次重建，把当前云端数据重新发布成页面。';
     publishList.append(plan);
     publishErr.hidden = true;
     publishErr.textContent = '';
@@ -1296,7 +1298,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     try {
       const status = await send('status');
       const summary = showStatus(status);
-      if (!status.ok || status.behind || (!status.dirty && status.ahead === 0)) return;
+      if (!status.ok || status.behind) return;
+      if (!status.dirty && !status.ahead) {
+        const message = '没有待发布的变化：数据和上次发布一致，也没有未推送的提交。';
+        say(message, 'idle');
+        toast(message, { tone: 'ok' });
+        return;
+      }
       const preview = status.dirty ? await send<PublishPreview>('publish-preview') : null;
       if (preview && !preview.ok) {
         say(preview.message || '读取变更预览失败', 'bad');
@@ -1311,6 +1319,11 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       renderPublish(status, preview);
       publishDlg.showModal();
       publishSummary.title = summary;
+    } catch (error) {
+      // 任何意外都要说出来，不能只剩一个没反应的按钮。
+      const message = `发布检查失败：${(error as Error).message}`;
+      say(message, 'bad');
+      toast(message, { tone: 'bad' });
     } finally {
       publishBtn.disabled = false;
     }
