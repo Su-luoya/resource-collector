@@ -11,6 +11,8 @@ export const startFakeCloud = async ({ links = [], status = [], icons = [] } = {
     icons: new Map(icons.map((row) => [row.host, { ...row }])),
   };
   const requests = [];
+  /** 一次性故障：验证「一半写成功」时接口到底怎么报 */
+  let fault = null;
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://fake');
@@ -26,6 +28,11 @@ export const startFakeCloud = async ({ links = [], status = [], icons = [] } = {
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined;
       requests.push({ method: req.method, table, query: url.search, body });
       if (!store) return reply(404, { message: `no table ${table}` });
+      if (fault && fault.method === req.method && fault.table === table) {
+        const { code } = fault;
+        fault = null;
+        return reply(code, { message: 'injected failure' });
+      }
 
       if (req.method === 'GET') {
         const select = url.searchParams.get('select') ?? '*';
@@ -67,6 +74,10 @@ export const startFakeCloud = async ({ links = [], status = [], icons = [] } = {
     rows: () => [...tables.links.values()],
     urls: () => [...tables.links.keys()],
     iconRows: () => [...tables.icons.values()],
+    /** 让下一次指定方法/表的请求失败：cloud.failNext('DELETE', 'link_status', 500) */
+    failNext(method, table, code = 500) {
+      fault = { method, table, code };
+    },
     /** 让 dev server 与脚本都连到这个假库 */
     use: () => {
       process.env.SUPABASE_URL = url;

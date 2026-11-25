@@ -150,6 +150,20 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.equal(removed.ok, true, removed.message);
     assert.equal(statuses()[failed], undefined);
     assert.deepEqual((await api('maintenance')).tasks, []);
+
+    // 行已经写成、体检状态没清掉：不能报成「写库失败」，否则用户会去重试一件已经完成的事
+    // （重试时旧地址已经不在了，只会拿到 404）
+    const moved = `${origin}/warn-moved`;
+    cloud.tables.link_status.set(warn, { url: warn, status: 'warn', code: 403, checked: '2026-08-01' });
+    cloud.failNext('DELETE', 'link_status', 500);
+    const partial = await api('edit', { action: 'update', url: warn, newUrl: moved });
+    assert.equal(partial.ok, true, partial.message);
+    assert.equal(partial.http, 200);
+    assert.match(partial.message, /体检状态没清掉/);
+    assert.ok(urls().includes(moved), '行必须已经写进去');
+    assert.ok(!urls().includes(warn), '旧地址已经不在了');
+    assert.notEqual(statuses()[warn], undefined, '这一步失败，旧状态行会留在库里');
+    assert.equal((await api('edit', { action: 'delete', url: moved })).ok, true);
   } finally {
     await server.stop();
     await new Promise((resolve) => target.close(resolve));

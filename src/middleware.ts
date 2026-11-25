@@ -84,7 +84,14 @@ const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: st
   const client = clientFor({ write: true });
   try {
     await client.replaceLinks(rows);
-    if (sync && sync.from !== sync.to) {
+  } catch (error) {
+    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
+  }
+  // 体检状态只是行数据的副本。行已经写成，这一步再挂也只能说「状态没跟上」：
+  // 报成 502 会让人去重试一件已经完成的事，而那时旧地址已经不在了，重试只会拿到 404。
+  let warning = '';
+  if (sync && sync.from !== sync.to) {
+    try {
       const previous = store.statuses[sync.from];
       await client.deleteStatus(sync.from);
       delete store.statuses[sync.from];
@@ -95,13 +102,13 @@ const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: st
           await client.upsertStatus({ ...previous, url: sync.to });
         }
       }
+    } catch (error) {
+      warning = `旧地址的体检状态没清掉：${(error as Error).message}`;
     }
-  } catch (error) {
-    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
   }
   store.rows = rows;
   await refreshCache(client);
-  return json({ ok: true, message, total: rows.length });
+  return json({ ok: true, message: warning ? `${message}（${warning}）` : message, total: rows.length });
 };
 
 const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
