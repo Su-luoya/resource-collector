@@ -5,11 +5,17 @@ import { base } from '../lib/site';
 interface Props {
   title?: string;
   description?: string;
+  /** og:type：首页与分区页是 website，资源详情页是 article */
+  type?: string;
 }
 const {
   title = '资源库',
   description = '个人网络资源库：经济金融、Python、机器学习、论文写作与 AI 工具的链接索引。',
+  type = 'website',
 } = Astro.props;
+
+/** 构建时 Astro.url 已经是「站点 + base + 路径」的绝对地址，分享卡片与 canonical 都用它 */
+const canonical = Astro.url.href;
 ---
 
 <!doctype html>
@@ -19,6 +25,16 @@ const {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content={type} />
+    <meta property="og:site_name" content="资源库" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
     <link rel="alternate" type="application/rss+xml" title="资源库 · 最近新增" href={`${base}rss.xml`} />
     <script is:inline>

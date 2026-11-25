@@ -1,6 +1,18 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { links, SLUGS, SECTIONS, hostOf, iconFor, statusOf, tagLabels } from '../../lib/links';
+import {
+  links,
+  SLUGS,
+  SECTIONS,
+  SECTION_LABEL,
+  hostOf,
+  iconFor,
+  statusOf,
+  linkHref,
+  facetTags,
+} from '../../lib/links';
+import { archiveHref } from '../../lib/archive.mjs';
+import { neighbors, relatedFor, sameHostOf } from '../../lib/related.mjs';
 import { renderNote } from '../../lib/note.mjs';
 import { base } from '../../lib/site';
 
@@ -12,7 +24,7 @@ const host = hostOf(l.url);
 const icon = iconFor(host);
 const status = statusOf(l.url);
 const sections = SECTIONS.filter((s) => l.section.includes(s.id));
-const tags = tagLabels(l);
+const tags = facetTags(l);
 const note = l.note ? renderNote(l.note) : '';
 
 const meta = [
@@ -20,9 +32,25 @@ const meta = [
   l.read === false ? '待看' : '',
   l.pin ? '置顶' : '',
 ].filter(Boolean).join(' · ');
+
+// warn 只是「要登录/拒绝抓取」，不能写成打不开
+const statusText = (value: string) =>
+  value === 'ok' ? '可访问' : value === 'redirect' ? '有跳转' : value === 'warn' ? '需登录或限制访问' : '打不开';
+
+/** 同站点的全量列表只展示前几条，标题里写总数 */
+const sameHost = sameHostOf(l, links) as typeof links;
+const sameHostShown = sameHost.slice(0, 5);
+const sameHostUrls = new Set(sameHostShown.map((r) => r.url));
+const related = (relatedFor(l, links, 8) as typeof links)
+  .filter((r) => !sameHostUrls.has(r.url))
+  .slice(0, 5);
+const nav = (l.section[0] ? neighbors(l, links, l.section[0]) : { prev: null, next: null }) as {
+  prev: (typeof links)[number] | null;
+  next: (typeof links)[number] | null;
+};
 ---
 
-<Base title={`${l.title} · 资源库`} description={l.desc}>
+<Base title={`${l.title} · 资源库`} description={l.desc} type="article">
   <div class="detail">
     <a class="detail-back" href={base}>← 返回全部</a>
 
@@ -39,27 +67,76 @@ const meta = [
       {meta && <span>{meta}</span>}
       {status && (
         <span class={status.status === 'fail' ? 'detail-bad' : ''}>
-          最近检查 {status.checked}：{status.status === 'ok' ? '可访问' : status.status === 'redirect' ? '有跳转' : '打不开'}
+          最近检查 {status.checked}：{statusText(status.status)}
         </span>
       )}
-      {icon && <img class="detail-icon" src={icon} alt="" width="16" height="16" loading="lazy" />}
+      {icon && <img class="detail-icon" src={`${base}${icon}`} alt="" width="16" height="16" loading="lazy" />}
     </div>
 
     <div class="detail-tags">
       {sections.map((s) => <a class="tag" href={`${base}${s.id}/`}>{s.label}</a>)}
-      {tags.map((t) => <span class="tag">{t}</span>)}
+      {tags.map((t) => <a class="tag" href={t.href} title={`在「${SECTION_LABEL[t.sid] ?? t.sid}」里只看这一类`}>{t.label}</a>)}
     </div>
 
     {l.note && <section class="detail-note"><Fragment set:html={note} /></section>}
 
-    <a class="detail-open" href={l.url} target="_blank" rel="noopener noreferrer">打开原页 →</a>
+    <div class="detail-actions">
+      <a class="detail-open" href={l.url} target="_blank" rel="noopener noreferrer">打开原页 →</a>
+      <a
+        class="detail-archive"
+        href={archiveHref(l.url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Wayback Machine 上的历史快照；原页打不开时还能看到存过的那一版"
+      >历史快照 ↗</a>
+    </div>
+
+    {(sameHost.length > 0 || related.length > 0) && (
+      <section class="detail-related">
+        {sameHost.length > 0 && (
+          <div class="detail-related-block">
+            <h2>同站点还有 {sameHost.length} 条</h2>
+            <ul class="detail-list">
+              {sameHostShown.map((r) => (
+                <li>
+                  <a href={linkHref(r)}>{r.title}</a>
+                  <span>{r.desc}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {related.length > 0 && (
+          <div class="detail-related-block">
+            <h2>相似条目</h2>
+            <ul class="detail-list">
+              {related.map((r) => (
+                <li>
+                  <a href={linkHref(r)}>{r.title}</a>
+                  <span>{r.section.map((id) => SECTION_LABEL[id] ?? id).join(' · ')} · {r.added}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    )}
+
+    {(nav.prev || nav.next) && (
+      <nav class="detail-neighbors" aria-label="同分区浏览">
+        {nav.prev ? <a href={linkHref(nav.prev)}>← {nav.prev.title}</a> : <span />}
+        {nav.next ? <a href={linkHref(nav.next)}>{nav.next.title} →</a> : <span />}
+      </nav>
+    )}
   </div>
   <script type="application/ld+json" set:html={JSON.stringify({
     '@context': 'https://schema.org',
-    '@type': 'WebSite',
+    '@type': 'WebPage',
     name: l.title,
-    url: l.url,
+    url: Astro.url.href,
     description: l.desc,
     inLanguage: 'zh-CN',
+    isPartOf: { '@type': 'WebSite', name: '资源库', url: new URL(base, Astro.url).href },
+    mainEntity: { '@type': 'CreativeWork', name: l.title, url: l.url, description: l.desc },
   })} />
 </Base>

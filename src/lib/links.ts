@@ -96,6 +96,41 @@ export const badgeLabels = (l: Resource, sid?: string): string[] => {
   return asList(l.facets?.[sid]?.[def.badge]).map((v) => valueLabel(sid, def.badge, v));
 };
 
+export type FacetTag = {
+  /** 分类属于哪个分区，链接就落到哪个分区页 */
+  sid: string;
+  fid: string;
+  value: string;
+  label: string;
+  /** 分区页的筛选视图：`#轴=取值`，由 src/client/filter.ts 还原 */
+  href: string;
+};
+
+/** 详情页的分类标签：每个取值都链到对应分区页的筛选视图，同一轴+取值跨分区只留第一个 */
+export const facetTags = (l: Resource): FacetTag[] => {
+  const seen = new Set<string>();
+  const tags: FacetTag[] = [];
+  for (const sid of l.section) {
+    const def = SECTION_BY_ID.get(sid);
+    if (!def) continue;
+    for (const f of def.facets) {
+      for (const value of asList(l.facets?.[sid]?.[f.id])) {
+        const key = `${f.id}:${value}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tags.push({
+          sid,
+          fid: f.id,
+          value,
+          label: valueLabel(sid, f.id, value),
+          href: `${base}${sid}/#${encodeURIComponent(f.id)}=${encodeURIComponent(value)}`,
+        });
+      }
+    }
+  }
+  return tags;
+};
+
 /** 卡片上的小标签：去掉徽标那条轴之后的其余分类 */
 export const tagLabels = (l: Resource, sid?: string): string[] => {
   if (!sid) return l.section.flatMap((id) => facetLabels(l, id));
