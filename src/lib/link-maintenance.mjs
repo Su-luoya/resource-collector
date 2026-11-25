@@ -11,7 +11,8 @@ const UA =
 export const classifyLink = (status, error) => {
   if (error) return /ENOTFOUND|EAI_AGAIN|CERT|SSL/i.test(String(error)) ? 'fail' : 'warn';
   if (status >= 200 && status < 400) return 'ok';
-  if ([401, 403, 405, 429].includes(status)) return 'warn';
+  // 401/403/405/429 是「不让机器看」，5xx 是站点自己出错：都不能断定链接失效，只提示人工确认
+  if ([401, 403, 405, 429].includes(status) || status >= 500) return 'warn';
   return 'fail';
 };
 
@@ -48,7 +49,16 @@ export const probeLink = async (url, options = {}) => {
       const timer = setTimeout(() => ctrl.abort(), timeout);
       let res;
       try {
-        const headers = { 'user-agent': UA, accept: 'text/html,*/*' };
+        // 尽量发一份像浏览器的请求头：只带 UA 时，不少 WAF 直接回 403
+        const headers = {
+          'user-agent': UA,
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-dest': 'document',
+          'sec-fetch-site': 'none',
+          'upgrade-insecure-requests': '1',
+        };
         // 手动转发 headers 时必须逐跳判断，不能把 GitHub token 带给重定向后的其它主机。
         if (/^https:\/\/api\.github\.com\//.test(current) && token) {
           headers.authorization = `Bearer ${token}`;
@@ -127,8 +137,9 @@ export const datedStatus = (info, checked = new Date().toISOString().slice(0, 10
 });
 
 /**
- * 两次确认才算真坏：404/410 是确定性的，立即判 fail；5xx、429、超时这类可能只是抖动，
+ * 两次确认才算真坏：404/410 是确定性的，立即判 fail；超时这类可能只是抖动，
  * 上一轮也没通过（或从没检查过）时先降为 warn，下一轮还是失败才写成 fail。
+ * 5xx 在 classifyLink 就归到 warn，永远不会升成 fail——站点自己抽风不该等于链接没了。
  */
 export const confirmFailure = (info, previous) => {
   if (info.status !== 'fail') return info;

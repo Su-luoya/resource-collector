@@ -121,7 +121,12 @@ test('probeLink 转发 303 后改用 GET，网络与状态码分级保持稳定'
   assert.deepEqual(methods, ['HEAD', 'GET']);
   assert.equal(result.status, 'redirect');
   assert.equal(classifyLink(404), 'fail');
+  assert.equal(classifyLink(410), 'fail');
   assert.equal(classifyLink(403), 'warn');
+  assert.equal(classifyLink(429), 'warn');
+  // 5xx 是站点自己出错，可能只是一时抽风，不能写成「链接失效」
+  assert.equal(classifyLink(500), 'warn');
+  assert.equal(classifyLink(503), 'warn');
   assert.equal(classifyLink(0, 'ENOTFOUND'), 'fail');
   assert.equal(classifyLink(0, 'AbortError'), 'warn');
 });
