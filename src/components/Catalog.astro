@@ -192,8 +192,9 @@ const rssHref = `${base}rss.xml`;
         const host = hostOf(l.url);
         const initial = (host.match(/[a-z0-9]/i)?.[0] ?? '·').toUpperCase();
         const icon = iconFor(host);
-        const linkBad = st && (st.status === 'fail' || st.status === 'warn');
-        const badge = st?.status === 'fail' ? '链接可能失效' : '链接待确认';
+        // 只有确定失效（404/410、域名没了）才在卡片上报警；403、5xx、超时只是机器看不到，不吓人
+        const linkBad = st?.status === 'fail';
+        const badge = '链接可能失效';
         const attrs = facetAttrs(l, sectionId);
         // 首页一条资源会同时带多个分区的分类，不限数量会撑破卡片：只用前 3 个，其余折成「+N」
         const tags = tagLabels(l, sectionId);
@@ -241,7 +242,7 @@ const rssHref = `${base}rss.xml`;
               </span>
               {l.read === false && <span class="badge-unread" title="标记为待看">待看</span>}
               {linkBad && (
-                <span class={st!.status === 'fail' ? 'badge-fail' : 'badge-warn'} title={`最近检查：${st!.checked}`}>
+                <span class="badge-fail" title={`最近检查：${st!.checked}`}>
                   {badge}
                 </span>
               )}

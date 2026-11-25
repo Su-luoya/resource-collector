@@ -35,7 +35,13 @@ const meta = [
 
 // warn 只是「要登录/拒绝抓取」，不能写成打不开
 const statusText = (value: string) =>
-  value === 'ok' ? '可访问' : value === 'redirect' ? '有跳转' : value === 'warn' ? '需登录或限制访问' : '打不开';
+  value === 'ok'
+    ? '可访问'
+    : value === 'redirect'
+      ? '有跳转'
+      : value === 'warn'
+        ? '站点限制自动检查，浏览器能打开'
+        : '打不开';
 
 /** 同站点的全量列表只展示前几条，标题里写总数 */
 const sameHost = sameHostOf(l, links) as typeof links;
