@@ -57,8 +57,8 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
   const entry = (title, url) => ({
     title,
     url,
-    section: ['nav'],
-    facets: { nav: { kind: 'tool' } },
+    section: ['tools'],
+    facets: { tools: { kind: 'tool' } },
     desc: title,
     added: '2026-01-01',
   });
@@ -124,8 +124,8 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     const draft = (url, patch = {}) => ({
       title: url.replace(/\W/g, '').slice(0, 20) || 'C',
       url,
-      section: ['nav'],
-      facets: { nav: { kind: 'tool' } },
+      section: ['tools'],
+      facets: { tools: { kind: 'tool' } },
       desc: '示例',
       added: '2026-01-01',
       ...patch,

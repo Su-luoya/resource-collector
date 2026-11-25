@@ -14,8 +14,8 @@ import { runTask } from './helpers/task.mjs';
 const row = (title, url, patch = {}) => ({
   title,
   url,
-  section: ['nav'],
-  facets: { nav: { kind: 'tool' } },
+  section: ['tools'],
+  facets: { tools: { kind: 'tool' } },
   desc: title,
   added: '2026-01-01',
   ...patch,

@@ -59,8 +59,8 @@ test('编造的依据被丢掉并计数，不改写正文也能对上的（空�
   const raw = JSON.stringify({
     title: 'T',
     desc: 'D',
-    section: ['nav'],
-    facets: { nav: { kind: 'tool' } },
+    section: ['tools'],
+    facets: { tools: { kind: 'tool' } },
     evidence: ['这个站点由麻省理工学院维护', '  我们整理中国宏观指标，  提供下载与 API 接口 '],
   });
   const result = parseDraft(raw, taxonomy, PAGE);
@@ -92,18 +92,18 @@ test('单选轴给了数组取第一个，多选轴给了字符串也能收下',
   const raw = JSON.stringify({
     title: 'T',
     desc: 'D',
-    section: ['packages'],
-    facets: { packages: { lang: 'python', kind: ['pkg', 'cli'] } },
+    section: ['metrics'],
+    facets: { metrics: { lang: 'python', kind: ['pkg', 'cli'] } },
     evidence: [],
   });
   const result = parseDraft(raw, taxonomy, PAGE);
   assert.equal(result.ok, true);
-  assert.deepEqual(result.draft.facets.packages, { lang: ['python'], kind: 'pkg' });
+  assert.deepEqual(result.draft.facets.metrics, { lang: ['python'], kind: 'pkg' });
 });
 
 test('分区多于两个时截断；一个都不合法时提示手动勾选', () => {
   const many = parseDraft(
-    JSON.stringify({ title: 'T', desc: 'D', section: ['data', 'scholar', 'nav'], facets: {} }),
+    JSON.stringify({ title: 'T', desc: 'D', section: ['data', 'scholar', 'tools'], facets: {} }),
     taxonomy,
     PAGE,
   );
@@ -119,7 +119,7 @@ test('分区多于两个时截断；一个都不合法时提示手动勾选', ()
 
 test('标题与简介超长时截断，没给内容则整体失败', () => {
   const long = parseDraft(
-    JSON.stringify({ title: 'A'.repeat(200), desc: 'B'.repeat(300), section: ['nav'], facets: { nav: { kind: 'tool' } } }),
+    JSON.stringify({ title: 'A'.repeat(200), desc: 'B'.repeat(300), section: ['tools'], facets: { tools: { kind: 'tool' } } }),
     taxonomy,
     PAGE,
   );
@@ -144,15 +144,15 @@ test('合并：默认只填空白字段，已填的保留并记下来', () => {
   assert.deepEqual(merged.kept, ['标题']);
 
   // 已选分区时不能把分区换成 AI 的推荐（否则分类与面板会对不上）
-  const keepBoth = mergeDraft({ title: '', desc: '', section: ['nav'], facets: { nav: { kind: 'blog' } } }, draft);
-  assert.deepEqual(keepBoth.section, ['nav']);
-  assert.deepEqual(keepBoth.facets, { nav: { kind: 'blog' } });
+  const keepBoth = mergeDraft({ title: '', desc: '', section: ['tools'], facets: { tools: { kind: 'blog' } } }, draft);
+  assert.deepEqual(keepBoth.section, ['tools']);
+  assert.deepEqual(keepBoth.facets, { tools: { kind: 'blog' } });
   assert.deepEqual(keepBoth.kept, ['分区与分类']);
 });
 
 test('合并：overwrite 时整片替换，不再记保留项', () => {
   const draft = { title: 'AI 标题', desc: 'AI 简介', section: ['data'], facets: { data: { kind: 'source', topic: [] } }, evidence: [] };
-  const merged = mergeDraft({ title: '我的标题', desc: '我的简介', section: ['nav'], facets: {} }, draft, {
+  const merged = mergeDraft({ title: '我的标题', desc: '我的简介', section: ['tools'], facets: {} }, draft, {
     overwrite: true,
   });
   assert.equal(merged.title, 'AI 标题');

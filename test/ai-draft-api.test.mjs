@@ -85,7 +85,7 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
   writeFileSync('public/icons/.gitkeep', '');
   const cloud = await startFakeCloud({
     links: [
-      { url: 'https://a.example.com', title: 'A', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01', pin: false, unread: false },
+      { url: 'https://a.example.com', title: 'A', section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: 'A', added: '2026-01-01', pin: false, unread: false },
     ],
   });
   cloud.use();
@@ -120,17 +120,17 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
     // 已经手写过标题与分区：默认保留，并要求人工核对时才覆盖
     const kept = await api('ai-draft', {
       url: `${origin}/doc`,
-      current: { title: '我自己写的标题', desc: '', section: ['nav'], facets: { nav: { kind: 'tool' } } },
+      current: { title: '我自己写的标题', desc: '', section: ['tools'], facets: { tools: { kind: 'tool' } } },
     });
     assert.equal(kept.ok, true);
     assert.equal(kept.merged.title, '我自己写的标题');
-    assert.deepEqual(kept.merged.section, ['nav']);
-    assert.deepEqual(kept.merged.facets, { nav: { kind: 'tool' } });
+    assert.deepEqual(kept.merged.section, ['tools']);
+    assert.deepEqual(kept.merged.facets, { tools: { kind: 'tool' } });
     assert.deepEqual(kept.kept, ['标题', '分区与分类']);
 
     const override = await api('ai-draft', {
       url: `${origin}/doc`,
-      current: { title: '我自己写的标题', desc: '', section: ['nav'], facets: { nav: { kind: 'tool' } } },
+      current: { title: '我自己写的标题', desc: '', section: ['tools'], facets: { tools: { kind: 'tool' } } },
       overwrite: true,
     });
     assert.equal(override.merged.title, '中国宏观数据站（AI）');

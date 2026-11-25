@@ -1,24 +1,108 @@
 {
   "sections": [
     {
-      "id": "scholar",
-      "label": "学者主页",
-      "hint": "研究者个人主页、论文列表与工作流笔记站",
-      "badge": "field",
+      "id": "metrics",
+      "label": "计量实证",
+      "hint": "做实证要用的东西：估计包、教程与书、方法清单、实证数据与解析工具",
+      "badge": "kind",
       "facets": [
         {
-          "id": "field",
-          "label": "研究领域",
-          "hint": "这条资源的主人主要在做什么",
+          "id": "kind",
+          "label": "形态",
+          "hint": "是能装的估计包、能读的教程，还是数据与清单",
+          "values": [
+            { "id": "pkg", "label": "方法包" },
+            { "id": "doc", "label": "教程与书" },
+            { "id": "data", "label": "数据与工具" },
+            { "id": "list", "label": "清单与博客" }
+          ]
+        },
+        {
+          "id": "lang",
+          "label": "语言",
+          "hint": "装起来用什么语言；与语言无关的内容标「不限语言」",
           "multi": true,
           "values": [
-            { "id": "corporate", "label": "公司金融" },
-            { "id": "banking", "label": "银行与金融中介" },
+            { "id": "python", "label": "Python" },
+            { "id": "stata", "label": "Stata" },
+            { "id": "r", "label": "R" },
+            { "id": "any", "label": "不限语言" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ml",
+      "label": "机器学习",
+      "hint": "深度学习与强化学习：框架、求解器、教程与研究文献",
+      "badge": "kind",
+      "facets": [
+        {
+          "id": "kind",
+          "label": "形态",
+          "hint": "是框架与求解器、强化学习环境，还是文献与教程",
+          "values": [
+            { "id": "fw", "label": "框架与求解器" },
+            { "id": "rl", "label": "强化学习" },
+            { "id": "doc", "label": "文献与教程" }
+          ]
+        },
+        {
+          "id": "lang",
+          "label": "语言",
+          "hint": "跑起来用什么语言；论文与综述标「不限语言」",
+          "multi": true,
+          "values": [
+            { "id": "python", "label": "Python" },
+            { "id": "any", "label": "不限语言" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "金融与宏观",
+      "hint": "定价与量化库、因子与宏观数据、金融与宏观研究",
+      "badge": "kind",
+      "facets": [
+        {
+          "id": "kind",
+          "label": "形态",
+          "hint": "是能装的定价库、能下的数据与指数，还是论文流",
+          "values": [
+            { "id": "lib", "label": "定价与量化库" },
+            { "id": "data", "label": "数据与指数" },
+            { "id": "paper", "label": "论文流" }
+          ]
+        },
+        {
+          "id": "topic",
+          "label": "领域",
+          "hint": "这条资源讲哪个市场",
+          "multi": true,
+          "values": [
             { "id": "asset", "label": "资产定价" },
-            { "id": "macro", "label": "宏观与货币" },
-            { "id": "metrics", "label": "计量方法" },
-            { "id": "ml", "label": "机器学习" },
-            { "id": "code", "label": "研究代码与数据" }
+            { "id": "corporate", "label": "公司金融" },
+            { "id": "banking", "label": "银行" },
+            { "id": "macro", "label": "宏观" },
+            { "id": "micro", "label": "市场微观结构" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lit",
+      "label": "文献搜索",
+      "hint": "论文检索入口、每日论文流与顶刊动态",
+      "badge": "kind",
+      "facets": [
+        {
+          "id": "kind",
+          "label": "形态",
+          "hint": "是搜论文的入口，还是持续更新的论文流",
+          "values": [
+            { "id": "search", "label": "检索入口" },
+            { "id": "stream", "label": "论文流" }
           ]
         }
       ]
@@ -26,7 +110,7 @@
     {
       "id": "data",
       "label": "数据",
-      "hint": "数据源、下载接口、指数与数据处理代码",
+      "hint": "数据源、下载接口、指数与数据集、抓取与解析代码",
       "badge": "kind",
       "facets": [
         {
@@ -37,6 +121,7 @@
             { "id": "source", "label": "数据源" },
             { "id": "api", "label": "下载与 API" },
             { "id": "index", "label": "指数与指标" },
+            { "id": "dataset", "label": "数据集" },
             { "id": "code", "label": "处理代码" }
           ]
         },
@@ -58,54 +143,79 @@
       ]
     },
     {
-      "id": "packages",
-      "label": "包与文档",
-      "hint": "能装的库与扩展，以及书、讲义一类的教程",
+      "id": "tools",
+      "label": "工具",
+      "hint": "通用 Python 库、在线小工具、平台服务、导航站与博客",
       "badge": "kind",
       "facets": [
         {
-          "id": "lang",
-          "label": "语言",
-          "hint": "装起来用什么语言；跨语言的工具标「不限语言」",
-          "multi": true,
-          "values": [
-            { "id": "python", "label": "Python" },
-            { "id": "stata", "label": "Stata" },
-            { "id": "r", "label": "R" },
-            { "id": "cpp", "label": "C++" },
-            { "id": "tex", "label": "LaTeX" },
-            { "id": "any", "label": "不限语言" }
-          ]
-        },
-        {
           "id": "kind",
           "label": "形态",
+          "hint": "是能装的库、网页上的小工具，还是服务与导航",
           "values": [
-            { "id": "pkg", "label": "包" },
-            { "id": "doc", "label": "文档与教程" },
-            { "id": "cli", "label": "命令行工具" },
-            { "id": "ext", "label": "插件与扩展" }
+            { "id": "lib", "label": "通用库" },
+            { "id": "tool", "label": "在线小工具" },
+            { "id": "service", "label": "平台服务" },
+            { "id": "nav", "label": "导航站" },
+            { "id": "blog", "label": "博客" }
           ]
         }
       ]
     },
     {
-      "id": "nav",
-      "label": "导航与小工具",
-      "hint": "博客、论文聚合、检索入口、目录站、在线工具、平台服务",
+      "id": "writing",
+      "label": "写作与排版",
+      "hint": "写作教程、LaTeX 与参考文献样式、文献管理",
       "badge": "kind",
       "facets": [
         {
           "id": "kind",
           "label": "形态",
+          "hint": "是教程、能用的模板与样式，还是文献管理工具",
           "values": [
-            { "id": "blog", "label": "博客与通讯" },
-            { "id": "paper", "label": "论文与文献聚合" },
-            { "id": "search", "label": "检索入口" },
-            { "id": "dir", "label": "目录与市场" },
-            { "id": "skill", "label": "Agent 技能" },
-            { "id": "tool", "label": "在线小工具" },
-            { "id": "service", "label": "平台服务" }
+            { "id": "doc", "label": "教程" },
+            { "id": "style", "label": "模板与样式" },
+            { "id": "manage", "label": "文献管理" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skill",
+      "label": "Agent 技能",
+      "hint": "Agent 技能的目录站与开源技能仓库",
+      "badge": "kind",
+      "facets": [
+        {
+          "id": "kind",
+          "label": "形态",
+          "hint": "是找技能的目录站，还是能直接装的技能仓库",
+          "values": [
+            { "id": "dir", "label": "目录站" },
+            { "id": "repo", "label": "技能仓库" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scholar",
+      "label": "学者主页",
+      "hint": "研究者个人主页、论文列表与工作流笔记站",
+      "badge": "field",
+      "facets": [
+        {
+          "id": "field",
+          "label": "研究领域",
+          "hint": "这条资源的主人主要在做什么",
+          "multi": true,
+          "values": [
+            { "id": "corporate", "label": "公司金融" },
+            { "id": "banking", "label": "银行与金融中介" },
+            { "id": "asset", "label": "资产定价" },
+            { "id": "macro", "label": "宏观与货币" },
+            { "id": "metrics", "label": "计量方法" },
+            { "id": "ml", "label": "机器学习" },
+            { "id": "code", "label": "研究代码与数据" }
           ]
         }
       ]

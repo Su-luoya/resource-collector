@@ -5,8 +5,8 @@ import { createClient, fromRow, fromStatusRow, toIconRow, toRow } from '../src/l
 const link = {
   title: 'A/B 测试计算器',
   url: 'https://example.com/ab',
-  section: ['packages'],
-  facets: { packages: { lang: ['r'], kind: 'tool' } },
+  section: ['tools'],
+  facets: { tools: { kind: 'service' } },
   desc: '算样本量与功效',
   added: '2025-02-01',
   pin: true,
@@ -32,7 +32,7 @@ test('toRow 不写多余字段：没有 pin 就是 false，空笔记要显式 nu
 });
 
 test('fromRow 只在有意义时带出可选字段', () => {
-  const plain = fromRow({ url: 'https://a.b', title: 'A', section: ['nav'], facets: {}, desc: 'd', added: '2025-01-02T03:04:05Z' });
+  const plain = fromRow({ url: 'https://a.b', title: 'A', section: ['tools'], facets: {}, desc: 'd', added: '2025-01-02T03:04:05Z' });
   assert.equal(plain.added, '2025-01-02', '带时间的时间戳要截成日期');
   assert.equal('pin' in plain, false);
   assert.equal('note' in plain, false);

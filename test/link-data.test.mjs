@@ -19,8 +19,8 @@ const today = '2999-12-31';
 const row = (patch = {}) => ({
   title: 'A 站',
   url: 'https://a.example.com',
-  section: ['packages'],
-  facets: { packages: { lang: ['python'], kind: 'pkg' } },
+  section: ['metrics'],
+  facets: { metrics: { lang: ['python'], kind: 'pkg' } },
   desc: '示例',
   added: '2026-01-01',
   ...patch,
@@ -63,7 +63,7 @@ test('从旧包装格式编辑、删光、再新增：保留头注释，始终�
 });
 
 test('dumpLinks 保留头部注释，并把带空白的 url 加引号', () => {
-  const raw = '# 注释\n\n- title: "A"\n  url: https://a.example.com\n  section: [nav]\n  facets:\n    nav: { kind: blog }\n  desc: "d"\n  added: 2026-01-01\n';
+  const raw = '# 注释\n\n- title: "A"\n  url: https://a.example.com\n  section: [tools]\n  facets:\n    tools: { kind: blog }\n  desc: "d"\n  added: 2026-01-01\n';
   const rows = parseLinks(raw);
   const out = dumpLinks([...rows, row({ url: 'https://b.example.com/a b' })], raw);
   assert.ok(out.startsWith('# 注释\n\n- title: "A"'));
@@ -77,10 +77,10 @@ test('dumpLinks 转义双引号与反斜杠，解析回来不丢字符，facets 
       title: '他说"你好"',
       desc: 'a\\b\r\nc',
       url: 'https://a.example.com/tag:',
-      section: ['data', 'packages'],
+      section: ['data', 'metrics'],
       facets: {
         data: { kind: 'code', topic: ['micro', 'asset'] },
-        packages: { lang: ['r', 'python'], kind: 'pkg' },
+        metrics: { lang: ['r', 'python'], kind: 'pkg' },
       },
     }),
   ];
@@ -138,9 +138,9 @@ test('分区：未登记、重复、非数组、空数组都会被拦下', () =>
     [
       row({ section: [] }),
       row({ url: 'https://b.example.com', section: ['nope'] }),
-      row({ url: 'https://c.example.com', section: ['nav', 'nav'], facets: { nav: { kind: 'blog' } } }),
-      row({ url: 'https://d.example.com', section: 'nav', facets: {} }),
-      row({ url: 'https://e.example.com', section: ['data'], facets: { packages: { lang: ['python'], kind: 'pkg' } } }),
+      row({ url: 'https://c.example.com', section: ['tools', 'tools'], facets: { tools: { kind: 'blog' } } }),
+      row({ url: 'https://d.example.com', section: 'tools', facets: {} }),
+      row({ url: 'https://e.example.com', section: ['data'], facets: { metrics: { lang: ['python'], kind: 'pkg' } } }),
     ],
     taxonomy,
     today,
@@ -148,33 +148,33 @@ test('分区：未登记、重复、非数组、空数组都会被拦下', () =>
   const text = errors.join('\n');
   assert.match(text, /links\[0\]\.section 必须是非空数组/);
   assert.match(text, /links\[1\]\.section 未登记：nope/);
-  assert.match(text, /links\[2\]\.section 重复：nav/);
+  assert.match(text, /links\[2\]\.section 重复：tools/);
   assert.match(text, /links\[3\]\.section 必须是非空数组/);
   assert.match(text, /links\[4\]\.facets\.data 缺失/);
-  assert.match(text, /links\[4\]\.facets\.packages 不在 section 里/);
+  assert.match(text, /links\[4\]\.facets\.metrics 不在 section 里/);
 });
 
 test('每个分区都要写自己的分类，轴与取值必须在词表里', () => {
   const { errors } = validateRows(
     [
-      row({ url: 'https://b.example.com', facets: { packages: { lang: ['python'] } } }), // 缺 kind
-      row({ url: 'https://c.example.com', facets: { packages: { lang: ['python'], kind: 'pkg', price: 'free' } } }),
-      row({ url: 'https://d.example.com', facets: { packages: { lang: ['rust'], kind: 'pkg' } } }),
-      row({ url: 'https://e.example.com', facets: { packages: { lang: 'python', kind: 'pkg' } } }), // 多选写成单值
-      row({ url: 'https://f.example.com', facets: { packages: { lang: ['python'], kind: ['pkg'] } } }), // 单选写成数组
-      row({ url: 'https://g.example.com', facets: { packages: { lang: ['python', 'python'], kind: 'pkg' } } }),
-      row({ url: 'https://h.example.com', facets: 'packages' }),
+      row({ url: 'https://b.example.com', facets: { metrics: { lang: ['python'] } } }), // 缺 kind
+      row({ url: 'https://c.example.com', facets: { metrics: { lang: ['python'], kind: 'pkg', price: 'free' } } }),
+      row({ url: 'https://d.example.com', facets: { metrics: { lang: ['rust'], kind: 'pkg' } } }),
+      row({ url: 'https://e.example.com', facets: { metrics: { lang: 'python', kind: 'pkg' } } }), // 多选写成单值
+      row({ url: 'https://f.example.com', facets: { metrics: { lang: ['python'], kind: ['pkg'] } } }), // 单选写成数组
+      row({ url: 'https://g.example.com', facets: { metrics: { lang: ['python', 'python'], kind: 'pkg' } } }),
+      row({ url: 'https://h.example.com', facets: 'metrics' }),
     ],
     taxonomy,
     today,
   );
   const text = errors.join('\n');
-  assert.match(text, /links\[0\]\.facets\.packages\.kind 缺失/);
-  assert.match(text, /links\[1\]\.facets\.packages\.price 不在该分区词表里/);
-  assert.match(text, /links\[2\]\.facets\.packages\.lang 未登记：rust/);
-  assert.match(text, /links\[3\]\.facets\.packages\.lang 可多选，必须写成数组/);
-  assert.match(text, /links\[4\]\.facets\.packages\.kind 单选，不能写成数组/);
-  assert.match(text, /links\[5\]\.facets\.packages\.lang 重复：python/);
+  assert.match(text, /links\[0\]\.facets\.metrics\.kind 缺失/);
+  assert.match(text, /links\[1\]\.facets\.metrics\.price 不在该分区词表里/);
+  assert.match(text, /links\[2\]\.facets\.metrics\.lang 未登记：rust/);
+  assert.match(text, /links\[3\]\.facets\.metrics\.lang 可多选，必须写成数组/);
+  assert.match(text, /links\[4\]\.facets\.metrics\.kind 单选，不能写成数组/);
+  assert.match(text, /links\[5\]\.facets\.metrics\.lang 重复：python/);
   assert.match(text, /links\[6\]\.facets 必须是对象/);
 });
 

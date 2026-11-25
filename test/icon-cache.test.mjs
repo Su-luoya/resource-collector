@@ -50,12 +50,12 @@ test('已知取不到的域名：脚本跳过且不联网，图标表保持不�
   }
   // 失败记录现在存在图标表里（file 为空 + missed_at），不再是本地文件
   const cloud = await startFakeCloud({
-    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
+    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
     icons: [{ host: 'miss.example.com', file: null, missed_at: new Date().toISOString() }],
   });
   cloud.use();
   writeCache({
-    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
+    links: [{ title: 'A', url: 'https://miss.example.com/', section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: 'A', added: '2026-01-01' }],
     status: [],
     icons: {},
     syncedAt: new Date().toISOString(),

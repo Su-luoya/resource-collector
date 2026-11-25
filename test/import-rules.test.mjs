@@ -34,19 +34,20 @@ test('书签文件：空输入不炸', () => {
 });
 
 test('域名规则命中平台，并给出词表内的取值', () => {
+  // 包注册表只能确定「是个包」，落在 tools 的通用库
   const pypi = suggestFor('https://pypi.org/project/numpy/', taxonomy);
-  assert.equal(pypi.section[0], 'packages');
-  assert.deepEqual(pypi.facets.packages, { lang: ['python'], kind: 'pkg' });
+  assert.equal(pypi.section[0], 'tools');
+  assert.deepEqual(pypi.facets.tools, { kind: 'lib' });
 
   const arxiv = suggestFor('https://arxiv.org/abs/1234', taxonomy);
-  assert.deepEqual(arxiv.facets.nav, { kind: 'paper' });
+  assert.deepEqual(arxiv.facets.lit, { kind: 'stream' });
 
   // 子域也算命中
   assert.equal(suggestFor('https://docs.pypi.org/x', taxonomy).matched, 'pypi.org');
 
   // github 只给分区，不猜形态
   const gh = suggestFor('https://github.com/a/b', taxonomy);
-  assert.deepEqual(gh.section, ['packages']);
+  assert.deepEqual(gh.section, ['tools']);
   assert.deepEqual(gh.facets, {});
 });
 
@@ -56,10 +57,10 @@ test('域名规则：未收录的域名返回 null，词表里删掉的取值会
 
   const trimmed = {
     sections: taxonomy.sections.map((s) =>
-      s.id === 'nav' ? { ...s, facets: s.facets.map((f) => ({ ...f, values: f.values.filter((v) => v.id !== 'paper') })) } : s,
+      s.id === 'lit' ? { ...s, facets: s.facets.map((f) => ({ ...f, values: f.values.filter((v) => v.id !== 'stream') })) } : s,
     ),
   };
   const arxiv = suggestFor('https://arxiv.org/abs/1', trimmed);
   assert.deepEqual(arxiv.facets, {});
-  assert.deepEqual(arxiv.dropped, ['nav.kind=paper']);
+  assert.deepEqual(arxiv.dropped, ['lit.kind=stream']);
 });

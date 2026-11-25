@@ -70,7 +70,7 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     cpSync(join(root, file), file);
   }
   writeFileSync('src/pages/index.astro', 'fixture');
-  const link = (title, url) => ({ title, url, section: ['nav'], facets: { nav: { kind: 'tool' } }, desc: title, added: '2026-01-01' });
+  const link = (title, url) => ({ title, url, section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: title, added: '2026-01-01' });
   const cloud = await startFakeCloud({ links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)] });
   cloud.use();
   t.after(() => cloud.close());

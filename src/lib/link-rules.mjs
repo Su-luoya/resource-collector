@@ -1,30 +1,38 @@
 // 「按域名猜分类」的规则表。
 //
-// 只收录平台性质没有歧义的域名：pypi 必然是包，arxiv 必然是论文聚合，fred 必然是指标。
+// 只收录平台性质没有歧义的域名：arxiv 必然是论文流，fred 必然是指标，kaggle 必然是数据源。
 // 一旦开始猜（github 上的仓库可能是包、也可能是研究代码、也可能是个文档站），
 // 就会把 AI 生成里最容易错的那部分搬到这里来，反而更难发现。
 //
+// 分区按主题切分之后，「包注册表」这一类只剩下一半的确定性：pypi 必然是个包，
+// 但它属于计量、机器学习还是工具，域名看不出来。这里默认落在 tools 的「通用库」，
+// 采集者如果发现它其实是某个领域的估计库，自己改成 metrics / ml 即可。
+//
 // 输出永远是「建议」：编辑层只把它摆在表单旁边当候选，绝不自动写盘。
 
+const paper = { section: ['lit'], facets: { lit: { kind: 'stream' } } };
+const registry = { section: ['tools'], facets: { tools: { kind: 'lib' } } };
+const blog = { section: ['tools'], facets: { tools: { kind: 'blog' } } };
+
 const RULES = [
-  { host: 'pypi.org', section: ['packages'], facets: { packages: { lang: ['python'], kind: 'pkg' } } },
-  { host: 'npmjs.com', section: ['packages'], facets: { packages: { kind: 'pkg' } } },
-  { host: 'crates.io', section: ['packages'], facets: { packages: { kind: 'pkg' } } },
-  { host: 'cran.r-project.org', section: ['packages'], facets: { packages: { lang: ['r'], kind: 'pkg' } } },
-  { host: 'ctan.org', section: ['packages'], facets: { packages: { lang: ['tex'], kind: 'pkg' } } },
-  { host: 'huggingface.co', section: ['packages'], facets: { packages: { kind: 'pkg' } } },
-  { host: 'arxiv.org', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'ssrn.com', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'nber.org', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'sciencedirect.com', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'jstor.org', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'pubmed.ncbi.nlm.nih.gov', section: ['nav'], facets: { nav: { kind: 'paper' } } },
-  { host: 'scholar.google.com', section: ['nav'], facets: { nav: { kind: 'search' } } },
+  { host: 'pypi.org', ...registry },
+  { host: 'npmjs.com', ...registry },
+  { host: 'crates.io', ...registry },
+  { host: 'cran.r-project.org', ...registry },
+  { host: 'ctan.org', ...registry },
+  { host: 'huggingface.co', section: ['data'], facets: { data: { kind: 'dataset' } } },
+  { host: 'arxiv.org', ...paper },
+  { host: 'ssrn.com', ...paper },
+  { host: 'nber.org', ...paper },
+  { host: 'sciencedirect.com', ...paper },
+  { host: 'jstor.org', ...paper },
+  { host: 'pubmed.ncbi.nlm.nih.gov', ...paper },
+  { host: 'scholar.google.com', section: ['lit'], facets: { lit: { kind: 'search' } } },
   { host: 'fred.stlouisfed.org', section: ['data'], facets: { data: { kind: 'index', topic: ['macro'] } } },
   { host: 'kaggle.com', section: ['data'], facets: { data: { kind: 'source' } } },
-  { host: 'substack.com', section: ['nav'], facets: { nav: { kind: 'blog' } } },
-  { host: 'medium.com', section: ['nav'], facets: { nav: { kind: 'blog' } } },
-  { host: 'github.com', section: ['packages'], facets: {} },
+  { host: 'substack.com', ...blog },
+  { host: 'medium.com', ...blog },
+  { host: 'github.com', section: ['tools'], facets: {} },
 ];
 
 const hostOf = (input) => {

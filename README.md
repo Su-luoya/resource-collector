@@ -3,8 +3,8 @@
 个人网络资源（书签）仓库 + 静态展示站，部署在 GitHub Pages。
 
 - 数据：Supabase（Postgres）。构建前 `npm run sync` 把它拉到 `.cache/links.json`，页面、校验、脚本都读这份缓存
-- 站点：Astro 静态构建，零客户端框架。首页是全部 95 条的卡片墙，另有四个分区页：`/scholar/`（学者主页）、`/data/`（数据）、`/packages/`（包与文档）、`/nav/`（导航与小工具）
-- 输出：`/`（全部）、四个分区页、`/links.json`（原始数据 API）、`/rss.xml`（最新 40 条）
+- 站点：Astro 静态构建，零客户端框架。首页是全部 94 条的卡片墙，另有 9 个分区页：`/metrics/`（计量实证）、`/ml/`（机器学习）、`/finance/`（金融与宏观）、`/lit/`（文献搜索）、`/data/`（数据）、`/tools/`（工具）、`/writing/`（写作与汇报）、`/skill/`（agent skill）、`/scholar/`（学者主页）
+- 输出：`/`（全部）、9 个分区页、`/links.json`（原始数据 API）、`/rss.xml`（最新 40 条）
 
 搜索支持空格分词：例如 `Python 固定效应` 会找出两个词都命中的资源，词序不限，也可以继续按分类筛选。结果数旁的「复制这 N 条」会按页面顺序把当前结果复制成 Markdown 列表，每条含标题、网址和简介。
 
@@ -20,9 +20,9 @@
 ```yaml
 - title: "JAX"
   url: https://docs.jax.dev/
-  section: [packages]
+  section: [ml]
   facets:
-    packages: { lang: [python], kind: pkg }
+    ml: { lang: [python], kind: fw }
   desc: "Google 的函数式数组计算与自动微分库，CPU/GPU/TPU 通用。"
   added: 2026-02-20
 ```
@@ -41,41 +41,53 @@
 
 分类采用**分面分类（faceted taxonomy）**，但每个分区有自己的词表：
 
-- `section` 决定这条资源进哪几页。跨界的两头都该出现——`tidy-finance` 既是数据处理代码（数据页），又是 R/Python 包（包与文档页），就写 `section: [data, packages]`。
-- `facets` 按分区嵌套，每个分区只写它自己声明的轴。同名的 `kind` 在数据页与包页是不同的轴、不同的取值，互不干扰。
+- `section` 决定这条资源进哪几页。分区按**主题**切分，所以一个包会落在它的主题页上；跨界的两头都该出现——`tidy-finance` 既是数据处理代码（数据页），又是 R/Python 包（计量页），就写 `section: [data, metrics]`。
+- `facets` 按分区嵌套，每个分区只写它自己声明的轴。同名的 `kind` 在数据页与计量页是不同的轴、不同的取值，互不干扰。
 
 ```yaml
 - title: "Tidy Finance"
   url: https://www.tidy-finance.org/
-  section: [data, packages]
+  section: [data, metrics]
   facets:
-    data: { kind: code, topic: [asset] }        # 数据页里算「处理代码」
-    packages: { lang: [r, python], kind: doc }  # 包页里算「文档与教程」
+    data: { kind: code, topic: [asset] }        # 数据页里算「处理代码」，领域是资产定价
+    metrics: { kind: doc, lang: [python] }      # 计量页里算「教材与文档」
 ```
 
 词表定义在 `src/data/taxonomy.json`（唯一事实源）。多选的轴写数组（一个都没有就写 `[]`），单选的轴写字符串。Astro 构建与 `npm run check` 都会校验，写错分区、轴名或取值直接报错。
 
-**A. 分区（4 个）**
+**A. 分区（9 个）**
 
 | id | 显示名 | 收录范围 |
 | --- | --- | --- |
-| `scholar` | 学者主页 | 研究者个人主页、论文列表与工作流笔记站 |
-| `data` | 数据 | 数据源、下载接口、指数与指标、数据处理代码 |
-| `packages` | 包与文档 | 能装的库与扩展，以及书、讲义一类的教程 |
-| `nav` | 导航与小工具 | 博客、论文聚合、检索入口、目录站、Agent 技能、在线工具、平台服务 |
+| `metrics` | 计量实证 | 估计与检验的包、方法教材笔记、方法目录、数据搬运代码 |
+| `ml` | 机器学习 | 深度学习框架、强化学习、训练与调参的资料 |
+| `finance` | 金融与宏观 | 金融宏观的库、论文、数据集，按资产品类标 |
+| `lit` | 文献搜索 | 检索入口、论文聚合流、数据库索引 |
+| `data` | 数据 | 数据源、下载接口、指数与指标、数据集、处理代码，按领域标 |
+| `tools` | 工具 | 通用库、在线工具、平台服务、博客、导航与目录 |
+| `writing` | 写作与汇报 | 论文模板、排版与图表指南、幻灯片工具 |
+| `skill` | agent skill | 技能目录站与技能仓库 |
+| `scholar` | 学者主页 | 研究者个人主页与工作论文 |
 
 **B. 每个分区的分类轴**
 
 | 分区 | 轴 | 单选/多选 | 取值 |
 | --- | --- | --- | --- |
+| `metrics` | `kind` 形态 | 单选 | `pkg` 包、`doc` 教材与文档、`data` 数据与搬运代码、`list` 目录与清单 |
+| `metrics` | `lang` 语言 | 多选 | `python`、`stata`、`r`、`any`（跨语言就标不限） |
+| `ml` | `kind` 形态 | 单选 | `fw` 框架与库、`rl` 强化学习、`doc` 教程与课程 |
+| `ml` | `lang` 语言 | 多选 | `python`、`any` |
+| `finance` | `kind` 形态 | 单选 | `lib` 金融库、`data` 数据、`paper` 论文 |
+| `finance` | `topic` 品类 | 多选 | `asset` 资产定价、`corporate` 公司金融、`banking` 银行、`macro` 宏观、`micro` 微观结构 |
+| `lit` | `kind` 形态 | 单选 | `search` 检索入口、`stream` 论文流与聚合 |
+| `data` | `kind` 形态 | 单选 | `source` 数据源、`api` 下载与接口、`index` 指数与指标、`dataset` 数据集、`code` 处理代码 |
+| `data` | `topic` 领域 | 多选 | `macro` 宏观、`corporate` 公司金融、`banking` 银行、`asset` 资产定价、`micro` 微观结构、`text` 文本与另类数据、`accounting` 会计 |
+| `tools` | `kind` 形态 | 单选 | `lib` 通用库、`tool` 在线小工具、`service` 平台服务、`nav` 导航与目录、`blog` 博客与通讯 |
+| `writing` | `kind` 形态 | 单选 | `doc` 论文模板与格式、`style` 排版与图表指南、`manage` 文献与项目管理 |
+| `skill` | `kind` 形态 | 单选 | `dir` 技能目录与市场、`repo` 技能仓库 |
 | `scholar` | `field` 研究领域 | 多选 | `corporate` 公司金融、`banking` 银行与金融中介、`asset` 资产定价、`macro` 宏观与货币、`metrics` 计量方法、`ml` 机器学习、`code` 研究代码与数据 |
-| `data` | `kind` 形态 | 单选 | `source` 数据源、`api` 下载与 API、`index` 指数与指标、`code` 处理代码 |
-| `data` | `topic` 领域 | 多选 | `macro` 宏观、`corporate` 公司金融、`banking` 银行、`asset` 资产定价、`micro` 市场微观结构、`text` 文本与另类数据、`accounting` 会计 |
-| `packages` | `lang` 语言 | 多选 | `python`、`stata`、`r`、`cpp`、`tex`、`any`（跨语言工具标「不限语言」） |
-| `packages` | `kind` 形态 | 单选 | `pkg` 包、`doc` 文档与教程、`cli` 命令行工具、`ext` 插件与扩展 |
-| `nav` | `kind` 形态 | 单选 | `blog` 博客与通讯、`paper` 论文与文献聚合、`search` 检索入口、`dir` 目录与市场、`skill` Agent 技能、`tool` 在线小工具、`service` 平台服务 |
 
-判断优先级：**资源的主体是什么**，而不是「页面长得像什么」。一个包的官方文档站仍算 `packages` 的 `pkg`（代表那个包），讲怎么用这个包的教程才是 `doc`。新增分区或取值：改 `src/data/taxonomy.json` 的 `sections`，页面路由与筛选 chips 都由它生成，不用改代码。
+判断优先级：**资源的主体是什么**，而不是「页面长得像什么」。一个包的官方文档站仍是它所属主题页的 `pkg`（代表那个包），讲怎么用这个包的教材才是 `doc`。分区之间没有上下级：`data` 页只放「数据这件事本身」（源、接口、指数、数据集、搬运代码），金融宏观的数据会双挂到 `finance`；估计方法、论文流、agent 技能都不再各自挂在别的页里。想要新分区或新取值：改 `src/data/taxonomy.json` 的 `sections`，页面路由与筛选 chips 都由它生成，不用改代码。
 
 ## 命令
 
@@ -121,7 +133,7 @@ src/
     icon-cache.mjs 图标失败缓存规则：取不到的域名 30 天内不重试
   components/Catalog.astro  首页与分区页共用的骨架：导航、chips、卡片墙、dev 表单
   client/filter.ts 分面筛选：轴从 chip 的 data-facet 读、搜索、hash 深链、键盘导航、主题
-  pages/           index.astro（全部）、[section].astro（四个分区页，路由由 taxonomy 生成）、links.json.ts、rss.xml.ts
+  pages/           index.astro（全部）、[section].astro（9 个分区页，路由由 taxonomy 生成）、links.json.ts、rss.xml.ts
   dev/editor.ts    仅 dev 加载的增删改 UI、批量导入、发布预览、多选与命令面板、置顶星标、全库查重（构建时被摇掉）
   dev/task.ts      仅 dev：轮询任务快照并画成步骤清单 + 细进度条
   dev/toast.ts     仅 dev：右下角提示队列，可带「撤销 / 重试」

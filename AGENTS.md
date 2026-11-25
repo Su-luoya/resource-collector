@@ -9,9 +9,9 @@
    ```yaml
    - title: "名称"
      url: https://...
-     section: [scholar]            # 可多选，不能为空；4 个分区见 taxonomy.json 的 sections
+     section: [scholar]            # 可多选，不能为空；9 个分区见 taxonomy.json 的 sections
      facets:                       # 按分区嵌套，每个分区只写它自己声明的轴
-       scholar: { field: [asset] } # field 多选；data 用 kind/topic，packages 用 lang/kind，nav 用 kind
+       scholar: { field: [asset] } # field 多选；data/finance 用 kind/topic，metrics/ml 用 kind/lang，tools/writing/skill/lit 用 kind
      desc: "一句中文简介，≤120 字，说清「是什么 + 有什么用」"
      added: YYYY-MM-DD             # 当天日期
      pin: true                     # 可选：置顶（浏览时排最前；搜索时不参与排序）
@@ -27,8 +27,8 @@
 ## 不要做
 
 - 不收录带登录态的控制台、付费后台、校内门户、机场/代理订阅链接；服务类只放官网首页。
-- **按分面分类归类**，不要层叠：先定 `section`（进哪几页，可多值——tidy-finance 既是数据处理代码又是包，就 `[data, packages]`），再写该分区的 `facets`。判断优先级是「资源主体是什么」，不是「页面长得像什么」——一个包的官方文档站算 `packages` 的 `pkg`，讲怎么用它才是 `doc`。
-- 不新建分区或分类：先改 `src/data/taxonomy.json` 的 `sections`（id + label + hint + badge + facets），再加到数据里，否则 `npm run check` 与构建都报错。分区页路由由它生成，加第 5 块不用写新页面。
+- **按分面分类归类**，不要层叠：先定 `section`（进哪几页，可多值——tidy-finance 既是数据处理代码又是包，就 `[data, metrics]`），再写该分区的 `facets`。分区按主题切分（计量实证 / 机器学习 / 金融与宏观 / 文献搜索 / 数据 / 工具 / 写作与汇报 / agent skill / 学者主页，平级），判断优先级是「资源主体是什么」，不是「页面长得像什么」——一个包的官方文档站算它所属主题页的 `pkg`，讲怎么用它才是 `doc`；金融宏观的数据双挂到 `finance`。
+- 不新建分区或分类：先改 `src/data/taxonomy.json` 的 `sections`（id + label + hint + badge + facets），再加到数据里，否则 `npm run check` 与构建都报错。分区页路由由它生成，加第 10 块不用写新页面。
 - 学者页的 `field` 判不出来就留 `[]`，不要为了填满而编造研究方向。
 - 置顶与「最近 7 天」只是浏览层的视图，不新增分区、不改卡片结构；置顶靠 `pin: true` 一个字段，`added` 仍是收录日期（不改成「最后修改」）。
 - 详情页地址由 URL 派生（`src/lib/slug.mjs` 的 `slugMap`），YAML 里**不存 slug 字段**：改 URL 就等于换地址，同一个地址永远得到同一个 slug（撞车按 URL 排序补 `-2`，与行序无关）。
@@ -49,11 +49,11 @@
 - `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序（转出 `compareNewest`/`comparePinned`）、搜索文本、图标表读取
 - `src/lib/ordering.mjs` — 卡片排序规则：置顶优先 + 时间倒序、同日期按标题；浏览页与 `filter.ts` 的卡片重排共用同一份实现
 - `src/components/Catalog.astro` — 首页与分区页共用的页面骨架（导航 / chips / 卡片墙 / dev 表单）
-- `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 四个分区页（路由由 taxonomy 生成）
+- `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 9 个分区页（路由由 taxonomy 生成）
 - `src/client/filter.ts` — 客户端筛选：轴从 chip 的 `data-facet` 读，首页只有 section 一条轴；还负责卡片重排、搜索高亮、最近 7 天开关、待看开关
 - `src/client/search.ts` — 搜索框解析：分面前缀（`#scholar` 之类）、`domain:`、`is:`、`unread` 伪轴，以及标题/简介/域名的匹配与排序
 - `src/pages/l/[slug].astro` — 每条资源的详情页（95 页，由 slug 派生）；`src/lib/slug.mjs` 负责生成地址，`src/lib/note.mjs` 负责笔记的 Markdown 子集渲染
-- `src/pages/sitemap.xml.ts` — 静态 sitemap（首页 / 四个分区 / 每条资源详情页）
+- `src/pages/sitemap.xml.ts` — 静态 sitemap（首页 / 9 个分区 / 每条资源详情页）
 - `src/styles/global.css` — 全部样式（含深浅色变量）
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`（图标脚本的失败缓存规则在 `src/lib/icon-cache.mjs`）
 - `src/middleware.ts` — dev-only 的 `/api/meta|ai-draft|batch-meta|batch-add|duplicates|duplicates-scan|import-bookmarks|edit|status|publish-preview|maintenance|recheck|publish|task`（构建与线上完全不生效；`api/meta` 的响应里带 `rules` 落点建议）
@@ -63,7 +63,7 @@
 - `src/lib/link-quality.mjs` — 新增/编辑时的相似重复候选、跟踪参数清理建议，以及全库查重 `scanDuplicates`（都只提示，不改数据）
 - `src/lib/icon-cache.mjs` — 图标失败缓存规则（取不到图标的域名 30 天内不重试，`--force` 可强刷）
 - `src/lib/ai-draft.mjs` — 「AI 生成标题/简介/分类」的提示词、输出解析与词表过滤、与表单合并（纯函数，模型调用在 middleware 的 `api/ai-draft`，走本机 `pi` 子进程）
-- `src/lib/link-rules.mjs` — 采集用的域名规则表（`suggestFor`）：arxiv → `nav/paper`、pypi/npm 等 → `packages`，认不出返回 `null`；规则命中只给分区与分类，不给简介
+- `src/lib/link-rules.mjs` — 采集用的域名规则表（`suggestFor`）：arxiv/ssrn/nber 等 → `lit/stream`、scholar.google → `lit/search`、fred/kaggle → `data`、pypi/npm 等注册表 → `tools/lib`、substack/medium → `tools/blog`，认不出返回 `null`；规则命中只给分区与分类，不给简介
 - `src/lib/bookmarks-html.mjs` — 浏览器书签 HTML 的解析（`parseBookmarks` → `{ items, skipped, total }`）与标题清洗（`tidyTitle`），导入前只产草稿不写盘
 - 「收录书签」：dev 工具条的 `#dev-capture` 在 `src/dev/editor.ts` 里现场拼一段 `javascript:`，把当前页地址与标题用 `?add=&title=` 带回预览站；页面载入时读到这两个参数就直接开新增表单。没有服务端参与，也没有单独的脚本文件
 - `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的增删改 UI、批量导入、发布预览与 AI 生成按钮、卡片多选与撤销、笔记编辑器、书签导入，仅 dev 加载
