@@ -851,7 +851,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       text.textContent = `${draft.section.length ? '✓' : '·'} ${draft.title} — ${host}${draft.folder ? `（${draft.folder}）` : ''} `;
       if (!draft.section.length) text.className = 'dev-skip';
       line.append(text);
-      line.append(externalLink(draft.url, '打开'));
+      line.append(externalLink('打开', draft.url));
       importList.append(line);
     }
     importMsg.textContent = skipped.length ? `已跳过：${skipped.slice(0, 5).map((item) => item.reason).join(' / ')}${skipped.length > 5 ? ' …' : ''}` : '';
