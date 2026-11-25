@@ -52,7 +52,10 @@ for (const chip of chips) known[chip.dataset.facet || '']?.add(chip.dataset.valu
 const valuesOf = (card: HTMLAnchorElement, axis: string) =>
   (card.getAttribute(`data-facet-${axis}`) || '').split(' ').filter(Boolean);
 
-const visible = () => cards.filter((card) => !card.hidden);
+/** 卡片外面包了一层 .card-slot，隐藏与重排都作用在它上面：判断可见性必须看外层，看 .card 永远是可见的 */
+const slotOf = (card: HTMLAnchorElement) => card.parentElement ?? card;
+
+const visible = () => cards.filter((card) => !slotOf(card).hidden);
 
 /** 标题与简介的原文：高亮要从原文重建，不能拿已经插了 <mark> 的 textContent 当源 */
 const hlEls = cards.flatMap((card) => Array.from(card.querySelectorAll<HTMLElement>('[data-hl]')));
@@ -66,8 +69,6 @@ function paint(pattern: RegExp | null) {
       if (el.childNodes.length > 1 || el.textContent !== text) el.textContent = text;
       continue;
     }
-    const card = el.closest<HTMLElement>('.card');
-    if (card?.hidden) continue;
     const pieces = highlightPieces(text, pattern);
     const only = pieces.length === 1 && !pieces[0].hit;
     if (only) {
@@ -96,9 +97,10 @@ function reorder(idle: boolean) {
     const right = { pin: b.dataset.pin === '1', added: b.dataset.added || '', title: hlText.get(b.querySelector<HTMLElement>('h2')!) || '' };
     return idle ? comparePinned(left, right) : compareNewest(left, right);
   });
-  if (ordered.every((card, index) => cards[index] === card && grid.children[index] === (card.parentElement ?? card))) return;
+  // 已经排好了就不动 DOM：比较对象是网格里现在的顺序，不是加载时那份静态数组
+  if (ordered.every((card, index) => grid.children[index] === slotOf(card))) return;
   // 卡片外面包了一层 .card-slot（为了放「详情」链接，不能套在 <a> 里）：重排要搬整块
-  for (const card of ordered) grid.append(card.parentElement ?? card);
+  for (const card of ordered) grid.append(slotOf(card));
 }
 
 function apply() {
@@ -123,7 +125,7 @@ function apply() {
     const okRecent = !recentOnly || (card.dataset.added || '') >= recentCutoff;
     const show = okFacets && okRecent && matchCard(card);
     // 卡片外面包了一层 .card-slot，隐藏要作用在外层，否则网格里留空位
-    (card.parentElement ?? card).hidden = !show;
+    slotOf(card).hidden = !show;
     if (show) n++;
   }
 
