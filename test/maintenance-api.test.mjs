@@ -2,11 +2,10 @@ import { test } from 'node:test';
 import { startFakeCloud } from './helpers/cloud.mjs';
 import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { dev } from 'astro';
-import { parseLinks } from '../src/lib/link-data.mjs';
 
 test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态同步与删除清理', async (t) => {
   const root = process.cwd();
@@ -108,7 +107,10 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.equal(rechecked.status.status, 'redirect');
     assert.equal(rechecked.status.final, final);
     assert.deepEqual(rechecked.status.redirects, [302]);
-    assert.match(rechecked.tasks[0].reason, /临时/);
+    // 复查只刷新一条，但返回的必须仍是整张维护列表（失败的那条不能被这次复查抹掉）
+    assert.deepEqual(rechecked.tasks.map((task) => task.kind), ['fail', 'redirect']);
+    assert.equal(rechecked.tasks[0].row.url, failed);
+    assert.match(rechecked.tasks[1].reason, /临时/);
 
     // 维护面板的一键采用只传原 URL 与 newUrl；其余字段由服务端沿用旧行。
     const adopted = await api('edit', { action: 'update', url: redirect, newUrl: final });
@@ -121,7 +123,9 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
 
     const ok = await api('recheck', { url: final });
     assert.equal(ok.status.status, 'ok');
-    assert.equal(ok.tasks.length, 0);
+    // 只剩「打不开」那条；新地址体检通过，不再是待办
+    assert.deepEqual(ok.tasks.map((task) => task.kind), ['fail']);
+    assert.equal(ok.tasks[0].row.url, failed);
 
     const duplicate = await api('edit', { action: 'update', url: final, newUrl: occupied });
     assert.equal(duplicate.http, 409);

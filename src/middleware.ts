@@ -824,7 +824,7 @@ const handleRecheck = async (request: Request) => {
   }
   const target = normUrl(body?.url);
   if (!target.url) return json({ ok: false, message: target.error }, 400);
-  const { rows } = readRows();
+  const rows = readRows();
   const row = rows.find((item) => urlKey(item.url) === urlKey(target.url as string));
   if (!row) return json({ ok: false, message: '链接不存在（可能已被改动）' }, 404);
 
@@ -837,7 +837,8 @@ const handleRecheck = async (request: Request) => {
   }
   store.statuses[row.url] = status;
   await refreshCache(client);
-  return json({ ok: true, status, tasks: maintenanceTasks(rows, { [row.url]: status }) });
+  // 维护面板靠这份列表整体重画：只回一条会把别的待办从界面上抹掉
+  return json({ ok: true, status, tasks: maintenanceTasks(rows, readStatuses()) });
 };
 
 /**
