@@ -113,6 +113,7 @@ npm run icons    # 下载各域名 favicon 到 public/icons/（新域名进构�
 | `SUPABASE_URL` | 项目地址 `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | 只读，构建与预览站读数据用 |
 | `SUPABASE_SECRET_KEY` | 可写，dev 编辑与周检写库用；只在本地与 Actions secrets 里出现，绝不进前端 |
+| `SUPABASE_DB_PASSWORD` | 可选，只有用 `psql` 直连改表结构时才用；dev 与 Actions 都不读它，也别提交到仓库 |
 
 表结构在 `supabase/schema.sql`（三张表 + 行级安全：匿名只有 SELECT，写只走 secret key）。
 
