@@ -32,6 +32,9 @@ test('normUrl 补 https、规范化 host 与路径', () => {
   assert.equal(norm('HTTPS://EXAMPLE.COM:443/Path'), 'https://example.com/Path');
   assert.equal(norm('http://example.com:80/x'), 'http://example.com/x');
   assert.equal(norm('https://example.com/a#frag'), 'https://example.com/a#frag');
+  // 少写两个斜杠的 http(s) 也算 http(s)，不能报「只接受 http(s) 链接」
+  assert.equal(norm('http:example.com/a'), 'http://example.com/a');
+  assert.equal(norm('https:example.com'), 'https://example.com/');
   assert.equal(norm('  '), undefined);
 });
 

@@ -23,8 +23,9 @@ export const normUrl = (input) => {
 
   if (!/^https?:\/\//i.test(url)) {
     const scheme = url.match(/^([a-z][a-z0-9+.-]*):/i);
-    if (scheme) return { error: `只接受 http(s) 链接，收到 ${scheme[1]}:` };
-    url = `https://${url}`;
+    if (scheme && !/^https?$/i.test(scheme[1])) return { error: `只接受 http(s) 链接，收到 ${scheme[1]}:` };
+    // `http:example.com` 这类少写两个斜杠的地址也一样是 http，交给 new URL 补全；只有裸域名才需要补 https://
+    if (!scheme) url = `https://${url}`;
   }
   url = url.replace(/^([a-z][a-z0-9+.-]*):\/\//i, (_, scheme) => `${scheme.toLowerCase()}://`);
 
