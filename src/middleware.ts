@@ -72,7 +72,7 @@ const loadStore = () => {
   return store;
 };
 
-const readRows = (): { raw: string; rows: Resource[] } => ({ raw: '', rows: loadStore().rows });
+const readRows = (): Resource[] => loadStore().rows;
 
 const readStatuses = (): Record<string, LinkStatus> => loadStore().statuses;
 
@@ -249,7 +249,7 @@ const hasPending = (rows: Resource[]) => {
 };
 
 const handlePublishPreview = () => {
-  const { rows } = readRows();
+  const rows = readRows();
   const published = readPublishedSnapshot();
   const statuses = readStatuses();
   // 只比两次快照都有的地址：上次发布后新收的行本来就没有旧状态。
@@ -272,7 +272,7 @@ const handleDuplicates = async (request: Request) => {
   // 只有编辑（或维护里改 URL）才排除自身；新增时必须把完全重复的那条报出来。
   const excluded = body?.excludeUrl ? normUrl(body.excludeUrl) : null;
   if (excluded && !excluded.url) return json({ ok: false, message: excluded.error }, 400);
-  const { rows } = readRows();
+  const rows = readRows();
   return json({
     ok: true,
     cleanup: cleanupUrl(target.url),
@@ -289,7 +289,7 @@ const BATCH_LIMIT = 20;
 
 /** 全库查重：只读，不动数据。报出来的每组都要用户自己决定怎么处理。 */
 const handleDuplicatesScan = () => {
-  const { rows } = readRows();
+  const rows = readRows();
   return json({ ok: true, ...scanDuplicates(rows) });
 };
 
@@ -410,7 +410,7 @@ const handleBatchMeta = async (request: Request) => {
   if (!input.length) return json({ ok: false, message: '请至少提供一个 URL' }, 400);
   if (input.length > BATCH_LIMIT) return json({ ok: false, message: `每批最多 ${BATCH_LIMIT} 条` }, 400);
 
-  const { rows } = readRows();
+  const rows = readRows();
   const seen = new Set<string>();
   const pending: string[] = [];
   const skipped: { url: string; reason: string; row?: Resource }[] = [];
@@ -500,7 +500,7 @@ const handleBatchAdd = async (request: Request) => {
   if (!input.length) return json({ ok: false, message: '没有待写入的草稿' }, 400);
   if (input.length > BATCH_LIMIT) return json({ ok: false, message: `每批最多 ${BATCH_LIMIT} 条` }, 400);
 
-  const { rows } = readRows();
+  const rows = readRows();
   const occupied = new Set(rows.map((row) => urlKey(row.url)));
   const prepared = [];
   for (let index = 0; index < input.length; index++) {
@@ -556,7 +556,7 @@ const handleImportBookmarks = async (request: Request) => {
   if (body?.commit === true) {
     const input = Array.isArray(body?.rows) ? body.rows : [];
     if (!input.length) return json({ ok: false, message: '没有待导入的条目' }, 400);
-    const { rows } = readRows();
+    const rows = readRows();
     const occupied = new Set(rows.map((row) => urlKey(row.url)));
     const prepared = [];
     const missing = [];
@@ -590,7 +590,7 @@ const handleImportBookmarks = async (request: Request) => {
     return applyEdit([...rows, ...prepared], `已导入 ${prepared.length} 条（都标为待看）`);
   }
 
-  const { rows } = readRows();
+  const rows = readRows();
   const occupied = new Set(rows.map((row) => urlKey(row.url)));
   const skipped: { url: string; reason: string }[] = [];
   const drafts = [];
@@ -638,7 +638,7 @@ const handleEdit = async (request: Request) => {
   const target = normUrl(body.url);
   if (!target.url) return json({ ok: false, message: target.error }, 400);
 
-  const { rows } = readRows();
+  const rows = readRows();
   const key = urlKey(target.url);
   const index = rows.findIndex((r) => r && urlKey(r.url) === key);
   const previous = rows[index];
@@ -781,7 +781,7 @@ const runPublishTask = async (id: string) => {
 };
 
 const handleStatus = () => {
-  const { rows } = readRows();
+  const rows = readRows();
   const diff = pendingDiff(rows);
   const branch = currentBranch();
   // 发布只触发 Actions 重建、不推代码，所以本地未推送的提交得在工具条里提示出来。
@@ -811,7 +811,7 @@ const handleStatus = () => {
 
 
 const handleMaintenance = () => {
-  const { rows } = readRows();
+  const rows = readRows();
   return json({ ok: true, tasks: maintenanceTasks(rows, readStatuses()) });
 };
 
