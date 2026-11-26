@@ -1,68 +1,27 @@
 // dev 编辑层：只在 `npm run dev` 里被动态 import，构建时整块被摇掉。
 // 端点见 src/middleware.ts；数据层的序列化与校验在 src/lib/link-data.mjs。
 import './editor.css';
-import type { LinkStatus, Resource } from '../lib/links';
-import { pollTask, renderTask, emptyTask, type TaskSnapshot } from './task';
+import {
+  $,
+  externalLink,
+  ticker,
+  twoStep,
+  type AiDraftReply,
+  type ApiReply,
+  type BatchMetaReply,
+  type Deps,
+  type Draft,
+  type DuplicateReply,
+  type MetaReply,
+  type Row,
+  type Skipped,
+} from './editor-shared';
+import { setupImport } from './editor-import';
+import { setupMaintenance } from './editor-maintenance';
+import { setupPublish } from './editor-publish';
+import { setupScan } from './editor-scan';
+import { emptyTask, pollTask, renderTask } from './task';
 import { toast, type ToastTone } from './toast';
-
-type Row = Resource;
-type Draft = Row & { note?: string };
-type LinkTask = { kind: 'fail' | 'redirect'; reason: string; row: Row; status: LinkStatus };
-type Skipped = { url: string; reason: string; row?: Row };
-type BatchMetaReply = { ok: boolean; message?: string; drafts?: Draft[]; skipped?: Skipped[] };
-type ImportDraft = Draft & { folder?: string; guessed?: boolean };
-type ImportReply = { ok: boolean; message?: string; drafts?: ImportDraft[]; skipped?: Skipped[]; total?: number };
-type ScanGroup = { kind: string; label: string; items: Row[] };
-type DuplicateReply = {
-  ok: boolean;
-  message?: string;
-  cleanup?: { url: string; removed: string[] } | null;
-  candidates?: { row: Row; reason: string }[];
-};
-type PublishPreview = {
-  ok: boolean;
-  message?: string;
-  added: Row[];
-  removed: Row[];
-  changed: { before: Row; after: Row }[];
-  statusChanged: boolean;
-  icons: string[];
-};
-type MetaReply = ApiReply & {
-  rules?: { section?: string[]; facets?: Record<string, Record<string, unknown>> } | null;
-};
-
-type ApiReply = {
-  ok: boolean;
-  message?: string;
-  reason?: string;
-  errors?: string[];
-  title?: string;
-  desc?: string;
-  note?: string;
-  dirty?: boolean;
-  ahead?: number | null;
-  behind?: number | null;
-  pushed?: boolean;
-  added?: number;
-  removed?: number;
-  changed?: number;
-  branch?: string;
-  head?: string;
-  warns?: string[];
-  tasks?: LinkTask[];
-  status?: LinkStatus;
-};
-
-type AiDraftReply = ApiReply & {
-  merged?: Row;
-  kept?: string[];
-  warnings?: string[];
-  evidence?: string[];
-  unverified?: number;
-  final?: string;
-  ms?: number;
-};
 
 const root = document.getElementById('dev');
 const dialog = document.getElementById('dev-dialog') as HTMLDialogElement | null;
@@ -72,7 +31,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const base = host.dataset.base || '/';
   const api = (name: string) => `${base}api/${name}`;
 
-  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const url = $<HTMLInputElement>('f-url');
   const title = $<HTMLInputElement>('f-title');
   const desc = $<HTMLTextAreaElement>('f-desc');
@@ -100,26 +58,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const batchStart = $<HTMLButtonElement>('dev-batch-start');
   const batchCancel = $<HTMLButtonElement>('dev-batch-cancel');
   const maintenanceBtn = $<HTMLButtonElement>('dev-maintenance');
-  const maintenanceDlg = $<HTMLDialogElement>('dev-maintenance-dialog');
-  const maintenanceList = $<HTMLDivElement>('dev-maintenance-list');
-  const maintenanceClose = $<HTMLButtonElement>('dev-maintenance-close');
   const publishBtn = $<HTMLButtonElement>('dev-publish');
-  const publishDlg = $<HTMLDialogElement>('dev-publish-dialog');
-  const publishSummary = $<HTMLParagraphElement>('dev-publish-summary');
-  const publishList = $<HTMLDivElement>('dev-publish-list');
-  const publishErr = $<HTMLParagraphElement>('dev-publish-err');
-  const publishConfirm = $<HTMLButtonElement>('dev-publish-confirm');
-  const publishCancel = $<HTMLButtonElement>('dev-publish-cancel');
-  const publishProgress = $<HTMLDivElement>('dev-publish-progress');
   const batchProgress = $<HTMLDivElement>('dev-batch-progress');
   const selectBar = $<HTMLDivElement>('dev-selectbar');
   const selectCount = $<HTMLSpanElement>('dev-select-count');
   const selectDelete = $<HTMLButtonElement>('dev-select-delete');
   const selectOpen = $<HTMLButtonElement>('dev-select-open');
   const scanBtn = $<HTMLButtonElement>('dev-scan');
-  const scanDlg = $<HTMLDialogElement>('dev-scan-dialog');
-  const scanList = $<HTMLDivElement>('dev-scan-list');
-  const scanClose = $<HTMLButtonElement>('dev-scan-close');
   const selectClear = $<HTMLButtonElement>('dev-select-clear');
   const palette = $<HTMLDialogElement>('dev-palette');
   const paletteInput = $<HTMLInputElement>('dev-palette-input');
@@ -137,24 +82,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   let batchReviewed: Draft[] = [];
   let batchIndex = 0;
   let batchSkippedRows: Skipped[] = [];
-  let publishTaskId: string | null = null;
-  let publishFinished = false;
-
-  /** 单次请求没有服务端进度可看，只能把已用秒数刷出来，至少让人知道没卡死 */
-  const ticker = (el: HTMLElement, text: (seconds: number) => string) => {
-    const started = Date.now();
-    el.textContent = text(0);
-    const id = window.setInterval(() => el.textContent = text(Math.round((Date.now() - started) / 1000)), 500);
-    return () => window.clearInterval(id);
-  };
-
-  /** 任务快照 → 工具条上那一行小字：做到哪一步了 */
-  const progressLine = (snap: TaskSnapshot) => {
-    const running = snap.steps.find((step) => step.status === 'running');
-    const where = running ? running.label : snap.status === 'ok' ? '收尾' : '停止';
-    const sub = snap.progress && snap.progress.total > 0 ? ` ${snap.progress.done}/${snap.progress.total}` : '';
-    return `${where}${running?.note ? ` · ${running.note}` : sub}`;
-  };
 
   const today = () => {
     const d = new Date();
@@ -204,6 +131,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     } catch {
       /* 坏数据直接丢 */
     }
+  };
+
+  /** 批量导入进行中时挡住其它入口：返回 false 表示已经弹过提示，调用方直接 return */
+  const guardBatch = (what: string) => {
+    if (!batchActive) return true;
+    toast(`请先完成或放弃当前批量导入，再${what}。`, { tone: 'bad' });
+    return false;
   };
 
   // ---- 卡片上的编辑/删除按钮 ----
@@ -690,36 +624,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
 
   aiBtn.addEventListener('click', () => void aiDraft(false));
 
-  /** 破坏性按钮的两步确认：第一次点只把文案改成「确认…」，4 秒内再点才真的执行。
-   *  比原生 confirm 顺手（不弹窗、不阻塞），也不会被浏览器自动化直接吞掉。 */
-  const twoStep = (btn: HTMLButtonElement, armedText: string, action: () => void | Promise<void>) => {
-    let timer = 0;
-    const restore = () => {
-      window.clearTimeout(timer);
-      delete btn.dataset.armed;
-      if (btn.dataset.restore) btn.textContent = btn.dataset.restore;
-      btn.classList.remove('is-armed');
-    };
-    btn.addEventListener('click', () => {
-      if (btn.dataset.armed === 'yes') {
-        restore();
-        void action();
-        return;
-      }
-      btn.dataset.restore = btn.textContent ?? '';
-      btn.dataset.armed = 'yes';
-      btn.textContent = armedText;
-      btn.classList.add('is-armed');
-      window.clearTimeout(timer);
-      timer = window.setTimeout(restore, 4000);
-    });
-  };
-
   async function remove(targetUrl: string, name?: string, row?: Row) {
-    if (batchActive) {
-      toast('请先完成或放弃当前批量导入，再删除其他资源。', { tone: 'bad' });
-      return;
-    }
+    if (!guardBatch('删除其他资源')) return;
     // 写库期间卡片已是 is-busy，连点会被这里挡住，不会重复提交
     if (cardEls.find((item) => (item.getAttribute('href') ?? '') === targetUrl)?.classList.contains('is-busy')) return;
 
@@ -869,80 +775,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   }
   for (const box of sectionBoxes) box.addEventListener('change', syncPanels);
 
-  // ---- 导入浏览器书签文件：先出草稿让人确认，再一次性写入 ----
-  const importBtn = $<HTMLButtonElement>('dev-import');
-  const importFile = $<HTMLInputElement>('dev-import-file');
-  const importDlg = $<HTMLDialogElement>('dev-import-dialog');
-  const importList = $<HTMLDivElement>('dev-import-list');
-  const importSummary = $<HTMLParagraphElement>('dev-import-summary');
-  const importMsg = $<HTMLParagraphElement>('dev-import-msg');
-  const importCommit = $<HTMLButtonElement>('dev-import-commit');
-  const importClose = $<HTMLButtonElement>('dev-import-close');
-  let importRows: ImportDraft[] = [];
-
-  const renderImport = (reply: ImportReply) => {
-    importRows = (reply.drafts ?? []).filter((draft) => draft.section.length > 0);
-    const skipped = reply.skipped ?? [];
-    const needSection = (reply.drafts ?? []).length - importRows.length;
-    importSummary.textContent = `文件里共 ${reply.total ?? 0} 条链接：可导入 ${importRows.length} 条，库里已有或无效 ${skipped.length} 条${needSection ? `，${needSection} 条没认出分区（先去「＋ 新增」里逐条收）` : ''}。导入的条目都会标成「待看」，简介先写成占位文字。`;
-    importList.replaceChildren();
-    for (const draft of (reply.drafts ?? []).slice(0, 200)) {
-      const line = document.createElement('p');
-      const text = document.createElement('span');
-      const host = (() => {
-        try {
-          return new URL(draft.url).hostname.replace(/^www\./, '');
-        } catch {
-          return '';
-        }
-      })();
-      text.textContent = `${draft.section.length ? '✓' : '·'} ${draft.title} — ${host}${draft.folder ? `（${draft.folder}）` : ''} `;
-      if (!draft.section.length) text.className = 'dev-skip';
-      line.append(text);
-      line.append(externalLink('打开', draft.url));
-      importList.append(line);
-    }
-    importMsg.textContent = skipped.length ? `已跳过：${skipped.slice(0, 5).map((item) => item.reason).join(' / ')}${skipped.length > 5 ? ' …' : ''}` : '';
-    importCommit.textContent = importRows.length ? `导入 ${importRows.length} 条` : '没有可导入的条目';
-    importCommit.disabled = importRows.length === 0;
-    importDlg.showModal();
-  };
-
-  importBtn.addEventListener('click', () => importFile.click());
-  importClose.addEventListener('click', () => importDlg.close());
-  importFile.addEventListener('change', async () => {
-    const file = importFile.files?.[0];
-    importFile.value = '';
-    if (!file) return;
-    if (file.size > 8_000_000) {
-      toast('书签文件太大（上限 8 MB）', { tone: 'bad' });
-      return;
-    }
-    const html = await file.text();
-    const reply = await send<ImportReply>('import-bookmarks', { html });
-    if (!reply.ok) {
-      toast(reply.message ?? '读不出这个书签文件', { tone: 'bad' });
-      return;
-    }
-    renderImport(reply);
-  });
-  importCommit.addEventListener('click', async () => {
-    importCommit.disabled = true;
-    importMsg.textContent = '写入中…';
-    const reply = await send<{ ok: boolean; message?: string; total?: number }>('import-bookmarks', {
-      commit: true,
-      rows: importRows,
-    });
-    importCommit.disabled = false;
-    if (!reply.ok) {
-      importMsg.textContent = reply.message ?? '导入失败';
-      return;
-    }
-    importDlg.close();
-    toast(reply.message ?? `已导入 ${importRows.length} 条`, { tone: 'ok' });
-    window.setTimeout(() => location.reload(), 600);
-  });
-
   // ---- 批量导入：先抓内存草稿，逐条 dry-run 校验，最后一次写入 ----
   function renderSkipped(items: Skipped[]) {
     batchSkipped.replaceChildren();
@@ -1034,439 +866,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     if (!batchActive) return;
     event.preventDefault();
     event.returnValue = '';
-  });
-
-  // ---- 链接维护 ----
-  const externalLink = (label: string, href: string) => {
-    const link = document.createElement('a');
-    link.href = href;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = label;
-    return link;
-  };
-
-  const actionButton = (label: string) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = label;
-    return button;
-  };
-
-  function maintenanceItem(task: LinkTask) {
-    const item = document.createElement('article');
-    item.className = 'dev-maintenance-item';
-
-    const head = document.createElement('div');
-    head.className = 'dev-maintenance-item-head';
-    const name = document.createElement('strong');
-    name.textContent = task.row.title;
-    const kind = document.createElement('span');
-    kind.className = `dev-maintenance-kind ${task.kind}`;
-    kind.textContent = task.kind === 'fail' ? '可能失效' : '重定向待确认';
-    head.append(name, kind);
-
-    const reason = document.createElement('p');
-    reason.className = 'dev-maintenance-reason';
-    const checked = task.status.checked ? ` · 最近检查 ${task.status.checked}` : '';
-    reason.textContent = `${task.reason}${checked}`;
-
-    const original = document.createElement('p');
-    original.className = 'dev-maintenance-url';
-    original.append(document.createTextNode('原地址：'), externalLink(task.row.url, task.row.url));
-    item.append(head, reason, original);
-
-    if (task.status.final && task.status.final !== task.row.url) {
-      const final = document.createElement('p');
-      final.className = 'dev-maintenance-url';
-      final.append(document.createTextNode('最终地址：'), externalLink(task.status.final, task.status.final));
-      item.append(final);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'dev-maintenance-actions';
-    const recheck = actionButton('单条复查');
-    recheck.addEventListener('click', async () => {
-      recheck.disabled = true;
-      recheck.textContent = '复查中…';
-      const res = await send('recheck', { url: task.row.url });
-      if (!res.ok) {
-        toast(res.message || '复查失败', { tone: 'bad' });
-        recheck.disabled = false;
-        recheck.textContent = '单条复查';
-        return;
-      }
-      await loadMaintenance();
-    });
-
-    const edit = actionButton(task.kind === 'redirect' ? '编辑替代地址' : '编辑链接');
-    edit.addEventListener('click', () => {
-      maintenanceDlg.close();
-      open(task.row, task.kind === 'redirect' ? task.status.final : undefined);
-    });
-    actions.append(recheck, edit);
-
-    if (task.kind === 'redirect' && task.status.final) {
-      const adopt = actionButton('采用新地址');
-      adopt.className = 'primary';
-      adopt.addEventListener('click', async () => {
-        adopt.disabled = true;
-        const res = await send('edit', {
-          action: 'update',
-          url: task.row.url,
-          newUrl: task.status.final,
-        });
-        if (!res.ok) {
-          adopt.disabled = false;
-          toast(res.errors?.join('；') || res.message || '更新失败', { tone: 'bad' });
-          return;
-        }
-        say(res.message || '已采用新地址');
-        flash(res.message || '已采用新地址', 'ok');
-        refresh();
-      });
-      actions.append(adopt);
-    }
-
-    item.append(actions);
-    return item;
-  }
-
-  async function loadMaintenance() {
-    const res = await send('maintenance');
-    if (!res.ok) {
-      maintenanceBtn.textContent = '链接维护（读取失败）';
-      return;
-    }
-    const tasks = res.tasks ?? [];
-    maintenanceBtn.textContent = `链接维护${tasks.length ? `（${tasks.length}）` : ''}`;
-    maintenanceList.replaceChildren();
-    if (!tasks.length) {
-      const empty = document.createElement('p');
-      empty.className = 'dev-maintenance-empty';
-      empty.textContent = '暂无需要处理的链接。';
-      maintenanceList.append(empty);
-      return;
-    }
-    maintenanceList.append(...tasks.map(maintenanceItem));
-  }
-
-  maintenanceBtn.addEventListener('click', () => {
-    if (batchActive) {
-      toast('请先完成或放弃当前批量导入，再处理链接维护。', { tone: 'bad' });
-      return;
-    }
-    maintenanceDlg.showModal();
-    void loadMaintenance();
-  });
-  maintenanceClose.addEventListener('click', () => maintenanceDlg.close());
-
-  // ---- 全库查重 ----
-  function renderScan(reply: { ok: boolean; message?: string; checked?: number; groups?: ScanGroup[] }) {
-    scanList.replaceChildren();
-    if (!reply.ok) {
-      const p = document.createElement('p');
-      p.className = 'dev-err';
-      p.textContent = reply.message || '查重失败';
-      scanList.append(p);
-      return;
-    }
-    const groups = reply.groups ?? [];
-    const head = document.createElement('p');
-    head.className = 'dev-scan-head';
-    head.textContent = groups.length
-      ? `检查了 ${reply.checked ?? 0} 条，发现 ${groups.length} 组重复`
-      : `检查了 ${reply.checked ?? 0} 条，没发现能确定的重复`;
-    scanList.append(head);
-
-    for (const group of groups) {
-      const block = document.createElement('div');
-      block.className = 'dev-scan-group';
-      const label = document.createElement('p');
-      label.className = 'dev-scan-label';
-      label.textContent = `${group.label}（${group.items.length} 条）`;
-      block.append(label);
-
-      const list = document.createElement('ul');
-      for (const row of group.items) {
-        const item = document.createElement('li');
-        const open = document.createElement('a');
-        open.href = row.url;
-        open.target = '_blank';
-        open.rel = 'noreferrer';
-        open.textContent = row.title;
-        const where = document.createElement('span');
-        where.className = 'dev-scan-url';
-        where.textContent = row.url;
-        item.append(open, where);
-        list.append(item);
-      }
-      block.append(list);
-      scanList.append(block);
-    }
-  }
-
-  scanBtn.addEventListener('click', async () => {
-    scanList.textContent = '正在查…';
-    scanDlg.showModal();
-    scanBtn.disabled = true;
-    const reply = await send<{ ok: boolean; message?: string; checked?: number; groups?: ScanGroup[] }>('duplicates-scan');
-    scanBtn.disabled = false;
-    renderScan(reply);
-  });
-  scanClose.addEventListener('click', () => scanDlg.close());
-
-  // ---- 发布 ----
-  function showStatus(status: ApiReply) {
-    const { dirty, ahead, behind, branch, head, added = 0, removed = 0, changed = 0 } = status;
-    publishBtn.textContent = '发布';
-    const notes: string[] = [];
-    if (behind) notes.push(`落后 origin/${branch} ${behind} 个提交，请先在终端同步`);
-    if (dirty) notes.push(added || removed || changed ? `未发布：+${added} −${removed} ~${changed}` : '数据文件有未提交改动');
-    if (ahead) notes.push(`${ahead} 个本地提交尚未推送`);
-    if (ahead === null) notes.push(`没有 origin/${branch} 的本地记录`);
-    const summary = status.ok ? notes.join('；') || `已同步 ${branch}@${head}` : status.message || '读不到状态';
-    say(summary, !status.ok || behind ? 'bad' : notes.length ? 'dirty' : 'idle');
-    return summary;
-  }
-
-  const formatValue = (value: unknown) => {
-    if (Array.isArray(value)) return value.join('、') || '（空）';
-    if (value && typeof value === 'object') return JSON.stringify(value);
-    return String(value ?? '') || '（空）';
-  };
-
-  function renderPublish(status: ApiReply, preview: PublishPreview | null) {
-    // 后端没给的字段一律当空：缺一个数组不该让整个对话框打不开。
-    const added = preview?.added ?? [];
-    const removed = preview?.removed ?? [];
-    const changed = preview?.changed ?? [];
-    const icons = preview?.icons ?? [];
-    const statusChanged = Boolean(preview?.statusChanged);
-    const counts = preview
-      ? `资源 +${added.length} −${removed.length} ~${changed.length}`
-      : '没有资源数据改动';
-    publishSummary.textContent = `目标：origin/${status.branch ?? '?'} · ${counts}`;
-    publishList.replaceChildren();
-
-    const group = (label: string, rows: Row[], className: string) => {
-      if (!rows.length) return;
-      const titleEl = document.createElement('h4');
-      titleEl.textContent = `${label}（${rows.length}）`;
-      publishList.append(titleEl);
-      for (const row of rows) {
-        const item = document.createElement('article');
-        item.className = `dev-publish-item ${className}`;
-        const name = document.createElement('strong');
-        name.textContent = row.title;
-        const link = document.createElement('p');
-        link.append(externalLink(row.url, row.url));
-        item.append(name, link);
-        publishList.append(item);
-      }
-    };
-
-    if (preview) {
-      group('新增资源', added, 'added');
-      group('删除资源', removed, 'removed');
-      if (changed.length) {
-        const titleEl = document.createElement('h4');
-        titleEl.textContent = `修改资源（${changed.length}）`;
-        publishList.append(titleEl);
-        for (const { before, after } of changed) {
-          const item = document.createElement('article');
-          item.className = 'dev-publish-item changed';
-          const name = document.createElement('strong');
-          name.textContent = after.title;
-          item.append(name);
-          const fields = [
-            ['title', '标题'], ['url', 'URL'], ['desc', '简介'],
-            ['section', '分区'], ['facets', '分类'], ['added', '收录日期'],
-          ] as const;
-          for (const [key, label] of fields) {
-            if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
-            const line = document.createElement('p');
-            line.className = 'dev-diff-field';
-            line.textContent = `${label}：${formatValue(before[key])} → ${formatValue(after[key])}`;
-            item.append(line);
-          }
-          publishList.append(item);
-        }
-      }
-
-      const extras = document.createElement('div');
-      extras.className = 'dev-publish-extras';
-      if (statusChanged) {
-        const line = document.createElement('p');
-        line.textContent = '链接体检状态有变化，页面重建后会跟着更新。';
-        extras.append(line);
-      }
-      if (icons.length) {
-        const titleEl = document.createElement('h4');
-        titleEl.textContent = '图标与图标索引变化';
-        extras.append(titleEl);
-        for (const icon of icons) {
-          const line = document.createElement('code');
-          line.textContent = icon;
-          extras.append(line);
-        }
-      }
-      if (!added.length && !removed.length && !changed.length && !statusChanged && !icons.length) {
-        const line = document.createElement('p');
-        line.textContent = '资源内容、体检状态和图标均无差异，可能只有格式或注释变化。';
-        extras.append(line);
-      }
-      publishList.append(extras);
-    } else {
-      const line = document.createElement('p');
-      line.textContent = '只推送当前分支已有的本地提交，不创建数据提交。';
-      publishList.append(line);
-    }
-
-    const plan = document.createElement('p');
-    plan.className = 'dev-publish-plan';
-    plan.textContent = status.dirty
-      ? '步骤：同步云端数据 → 校验 → 补抓缺失图标 → 触发 Actions 重建。'
-      : '只触发一次重建，把当前云端数据重新发布成页面。';
-    publishList.append(plan);
-    publishErr.hidden = true;
-    publishErr.textContent = '';
-  }
-
-  publishBtn.addEventListener('click', async () => {
-    if (batchActive) {
-      toast('请先完成或放弃当前批量导入，再发布。', { tone: 'bad' });
-      return;
-    }
-    if (publishTaskId) {
-      publishDlg.showModal();
-      return;
-    }
-    publishBtn.disabled = true;
-    try {
-      const status = await send('status');
-      const summary = showStatus(status);
-      if (!status.ok || status.behind) return;
-      if (!status.dirty && !status.ahead) {
-        const message = '没有待发布的变化：数据和上次发布一致，也没有未推送的提交。';
-        say(message, 'idle');
-        toast(message, { tone: 'ok' });
-        return;
-      }
-      const preview = status.dirty ? await send<PublishPreview>('publish-preview') : null;
-      if (preview && !preview.ok) {
-        say(preview.message || '读取变更预览失败', 'bad');
-        toast(preview.message || '读取变更预览失败', { tone: 'bad' });
-        return;
-      }
-      publishFinished = false;
-      publishConfirm.textContent = '确认发布';
-      publishProgress.hidden = true;
-      publishProgress.replaceChildren();
-      renderPublish(status, preview);
-      publishDlg.showModal();
-      publishSummary.title = summary;
-    } catch (error) {
-      // 任何意外都要说出来，不能只剩一个没反应的按钮。
-      const message = `发布检查失败：${(error as Error).message}`;
-      say(message, 'bad');
-      toast(message, { tone: 'bad' });
-    } finally {
-      publishBtn.disabled = false;
-    }
-  });
-
-  /** 收尾：成功就把四步全✓留在屏幕上等你看完，失败则给可重试的 Toast */
-  const finishPublish = (snap: TaskSnapshot) => {
-    renderTask(publishProgress, snap);
-    say(progressLine(snap), snap.status === 'ok' ? 'idle' : 'bad');
-    publishConfirm.disabled = false;
-    publishCancel.disabled = false;
-    const res = (snap.result ?? {}) as ApiReply;
-    if (snap.status !== 'ok' || !res.ok) {
-      const message = [snap.message || res.message || '发布失败', ...(res.errors ?? [])].join('\n');
-      publishErr.textContent = message;
-      publishErr.hidden = false;
-      say(res.message || snap.message || '发布失败', 'bad');
-      toast('发布失败', {
-        tone: 'bad',
-        detail: message,
-        action: { label: '重试', run: () => { if (!publishConfirm.disabled) publishConfirm.click(); } },
-      });
-      return;
-    }
-    publishBtn.textContent = '发布';
-    const warns = res.warns ?? [];
-    say(res.message || '已推送', warns.length ? 'dirty' : 'idle');
-    toast(warns.length ? '已发布，有需要留意的改动' : '已发布', {
-      tone: warns.length ? 'warn' : 'ok',
-      detail: warns.length ? warns.join('；') : undefined,
-      timeout: warns.length ? 15_000 : 6000,
-    });
-    publishFinished = true;
-    publishConfirm.textContent = '完成并刷新';
-    publishConfirm.disabled = false;
-    publishCancel.disabled = false;
-  };
-
-  /** 轮询一个发布任务直到结束。整页刷新会重置脚本（图标写盘会触发 Vite 重载），
-   *  所以这段必须在加载时能重新接上，不能只活在确认按钮的回调里。 */
-  const watchPublish = async (id: string) => {
-    publishTaskId = id;
-    let snap: TaskSnapshot;
-    try {
-      snap = await pollTask(id, {
-        interval: 300,
-        onUpdate: (state) => {
-          renderTask(publishProgress, state);
-          if (state.status === 'running') say(progressLine(state), 'dirty');
-        },
-      });
-    } finally {
-      publishTaskId = null;
-    }
-    finishPublish(snap);
-  };
-
-  publishConfirm.addEventListener('click', async () => {
-    // 发布完成后按钮变成「完成并刷新」：四步全✓和用时留在屏幕上，等你看完再刷新
-    if (publishFinished) {
-      location.reload();
-      return;
-    }
-    // 不拿 pendingPublish 做闸门：整页重载后接着跑的那次失败发布，这里本来就没有预览状态，
-    // 拦住只会让 Toast 上的「重试」变成一个空的按钮。发布本身在服务端还要过校验。
-    publishConfirm.disabled = true;
-    publishErr.hidden = true;
-    publishProgress.hidden = false;
-    renderTask(publishProgress, emptyTask('publish'));
-    // send 没给 body 会发 GET；发布必须 POST，所以传一个空对象把方法扳过去
-    const created = await send<{ ok: boolean; id?: string; message?: string }>('publish', {});
-    if (!created.ok || !created.id) {
-      publishConfirm.disabled = false;
-      publishErr.textContent = created.message || '发布任务创建失败';
-      publishErr.hidden = false;
-      return;
-    }
-    sessionStorage.setItem(PUBLISH_KEY, created.id);
-    await watchPublish(created.id);
-  });
-
-  /** 发布成功后：关对话框才刷新，避免页面在进度条刚走满时闪掉 */
-  const closePublished = (event?: Event) => {
-    if (event) event.preventDefault();
-    if (publishFinished) {
-      sessionStorage.removeItem(PUBLISH_KEY);
-      location.reload();
-      return;
-    }
-    publishDlg.close();
-  };
-
-  publishCancel.addEventListener('click', () => closePublished());
-  publishDlg.addEventListener('cancel', (event) => {
-    // 发布中允许关掉对话框：任务在服务端继续跑，工具条上的进度仍能看到
-    if (publishFinished) return closePublished(event);
   });
 
   // ---- 多选后的批量删除 ----
@@ -1631,37 +1030,13 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     }
   });
 
-  /** 补图标会写 icons.json，Vite 会因此整页重载；所以任务 id 存 sessionStorage，
-   *  重载后还能把这个任务的进度（以及已完成的结果）接回来。 */
-  const PUBLISH_KEY = 'dev-publish-task';
-  const resumePublish = async () => {
-    const id = sessionStorage.getItem(PUBLISH_KEY);
-    if (!id) return;
-    const state = await send<{ ok: boolean; task?: TaskSnapshot }>(`task?id=${encodeURIComponent(id)}`);
-    if (!state.ok || !state.task) {
-      sessionStorage.removeItem(PUBLISH_KEY);
-      return;
-    }
-    const snapshot = state.task;
-    publishFinished = false;
-    publishProgress.hidden = false;
-    publishList.replaceChildren();
-    publishConfirm.textContent = '确认发布';
-    renderTask(publishProgress, snapshot);
-    publishSummary.textContent = snapshot.status === 'running' ? '发布正在进行（仍在后台跑）' : '上次发布的进度';
-    publishDlg.showModal();
-    if (snapshot.status === 'running') {
-      publishConfirm.disabled = true;
-      await watchPublish(snapshot.id);
-    } else {
-      finishPublish(snapshot);
-    }
-    sessionStorage.removeItem(PUBLISH_KEY);
-  };
+  // 四个对话框各自管自己的 DOM 与请求，这里只把共用的收发与工具条状态递过去
+  const deps: Deps = { send, say, flash, refresh, guardBatch, openForm: open };
+  setupScan(deps);
+  setupImport(deps);
+  void setupMaintenance(deps).load();
+  setupPublish(deps);
 
-  void send('status').then(showStatus);
-  void loadMaintenance();
-  void resumePublish();
   resumeUndo();
   resumeFlash();
 }

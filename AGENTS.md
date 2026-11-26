@@ -65,6 +65,7 @@
 - `src/lib/link-rules.mjs` — 采集用的域名规则表（`suggestFor`）：arxiv/ssrn/nber 等 → `lit/stream`、scholar.google → `lit/search`、fred/kaggle → `data`、pypi/npm 等注册表 → `tools/lib`、substack/medium → `tools/blog`，认不出返回 `null`；规则命中只给分区与分类，不给简介
 - `src/lib/bookmarks-html.mjs` — 浏览器书签 HTML 的解析（`parseBookmarks` → `{ items, skipped, total }`）与标题清洗（`tidyTitle`），导入前只产草稿不写盘
 - 「收录书签」：dev 工具条的 `#dev-capture` 在 `src/dev/editor.ts` 里现场拼一段 `javascript:`，把当前页地址与标题用 `?add=&title=` 带回预览站；页面载入时读到这两个参数就直接开新增表单。没有服务端参与，也没有单独的脚本文件
-- `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的增删改 UI、批量导入、发布预览与 AI 生成按钮、卡片多选与撤销、笔记编辑器、书签导入，仅 dev 加载
+- `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的表单（新增/编辑/删除、抓元信息、AI 生成、笔记编辑器）、批量导入、卡片多选与撤销、`⌘K` 命令面板，仅 dev 加载
+- `src/dev/editor-scan.ts` / `editor-import.ts` / `editor-maintenance.ts` / `editor-publish.ts` — 四个对话框各自一个文件（全库查重、书签导入、链接维护、发布与任务进度）；`editor-shared.ts` 放共用的元素查找、小工具与 `Deps`（`send` / `say` / `flash` / `refresh` / `guardBatch` / `openForm`），由 `editor.ts` 的 `init` 造好再分发
 - `src/dev/task.ts` / `src/dev/toast.ts` / `src/dev/command-palette.ts` — 仅 dev：任务进度渲染、右下角提示队列（可带撤销/重试）、⌘K 命令面板
 - `.github/workflows/deploy.yml`（push 即部署）、`link-check.yml`（每周链接体检并提交结果）
