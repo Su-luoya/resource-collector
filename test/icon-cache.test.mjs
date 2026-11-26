@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeMiss, isRetryable, MISS_DAYS, pruneMisses } from '../src/lib/icon-cache.mjs';
+import { describeMiss, isRetryable, MISS_DAYS } from '../src/lib/icon-cache.mjs';
 import { startFakeCloud } from './helpers/cloud.mjs';
 import { writeCache } from '../src/lib/cloud-sync.mjs';
 
@@ -18,16 +18,6 @@ test('失败记录未满 30 天就不再重试，满 30 天与坏日期都要重
   assert.equal(isRetryable(new Date(now - MISS_DAYS * DAY).toISOString(), now), true);
   assert.equal(isRetryable('2026-13-99', now), true);
   assert.equal(isRetryable(undefined, now), true);
-});
-
-test('清理缓存：数据里没了的域名、已过期的记录都丢掉', () => {
-  const misses = {
-    'keep.io': new Date(now - DAY).toISOString(),
-    'gone.io': new Date(now - DAY).toISOString(),
-    'stale.io': new Date(now - 40 * DAY).toISOString(),
-  };
-  assert.deepEqual(Object.keys(pruneMisses(misses, new Set(['keep.io', 'stale.io']), now)), ['keep.io']);
-  assert.deepEqual(pruneMisses(undefined, new Set(), now), {});
 });
 
 test('日志文案：今天 / N 天前 / 读不懂的日期', () => {

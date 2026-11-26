@@ -2,8 +2,7 @@
 // 发布里最贵的那 20 多秒几乎全花在反复重试「根本没有 favicon」的站点上，
 // 缓存后发布回到 1–2 秒；真恢复了就等过期后再自动补，或手动 `npm run icons -- --force`。
 //
-// 缓存文件是本地状态（.cache/icon-misses.json，git-ignored），不进 src/data，
-// 免得污染页面要读的图标表。
+// 记录存在云端 icons 表里（file 为空 + missed_at），不再有本地缓存文件。
 
 export const MISS_DAYS = 30;
 
@@ -14,17 +13,6 @@ export const isRetryable = (missedAt, now = Date.now(), days = MISS_DAYS) => {
   const at = Date.parse(missedAt);
   if (!Number.isFinite(at)) return true;
   return now - at >= days * DAY;
-};
-
-/** 丢掉数据里已经不存在的域名、以及已经过期的记录，避免缓存文件无限长 */
-export const pruneMisses = (misses, keys, now = Date.now(), days = MISS_DAYS) => {
-  const out = {};
-  for (const [key, at] of Object.entries(misses ?? {})) {
-    if (!keys.has(key)) continue;
-    if (isRetryable(at, now, days)) continue;
-    out[key] = at;
-  }
-  return out;
 };
 
 /** 快照一行给日志看：`3 天前取不到` */
