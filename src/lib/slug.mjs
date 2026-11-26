@@ -41,7 +41,9 @@ export const slugOf = (input) => {
 
 /**
  * 全库 slug 表：url → slug。
- * 撞车时按 URL 字典序分配后缀，跟文件里的先后顺序无关，因此重排 YAML 不会改地址。
+ * 撞车时按 URL 字典序分配后缀，跟文件里的先后顺序无关，因此重排数据不会改地址。
+ * 后缀要逐個避让已经发出去的地址：只按「同组里第几条」编号，会撞上另一个组本身就
+ * 叫 `xxx-2` 的地址（例如 /a?ref=1 与 /a-2 同时存在）。
  */
 export const slugMap = (rows) => {
   const groups = new Map();
@@ -52,9 +54,14 @@ export const slugMap = (rows) => {
   }
 
   const map = new Map();
-  for (const [slug, urls] of groups) {
-    const sorted = [...new Set(urls)].sort();
-    sorted.forEach((url, i) => map.set(url, i === 0 ? slug : `${slug}-${i + 1}`));
+  const used = new Set();
+  for (const slug of [...groups.keys()].sort()) {
+    for (const url of [...new Set(groups.get(slug))].sort()) {
+      let candidate = slug;
+      for (let n = 2; used.has(candidate); n++) candidate = `${slug}-${n}`;
+      used.add(candidate);
+      map.set(url, candidate);
+    }
   }
   return map;
 };

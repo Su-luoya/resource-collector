@@ -41,3 +41,15 @@ test('不同站点的根路径不会都退化成空串', () => {
   const map = slugMap([{ url: 'https://a.io/' }, { url: 'https://b.io/' }]);
   assert.deepEqual([...map.values()].sort(), ['a-io', 'b-io']);
 });
+
+test('撞出来的序号不能占掉另一条 URL 的真实地址', () => {
+  const rows = [
+    { url: 'https://example.com/a' },
+    { url: 'https://example.com/a?ref=1' },
+    { url: 'https://example.com/a-2' },
+  ];
+  const map = slugMap(rows);
+  assert.equal(new Set([...map.values()]).size, 3, '三条 URL 要有三个不同地址');
+  assert.equal(map.get('https://example.com/a'), 'example-com-a', '没撞车的那条保持原地址');
+});
+

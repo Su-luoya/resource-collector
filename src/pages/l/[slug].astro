@@ -45,7 +45,7 @@ const statusText = (value: string) =>
 /** 同站点的全量列表只展示前几条，标题里写总数 */
 const sameHost = sameHostOf(l, links) as typeof links;
 const sameHostShown = sameHost.slice(0, 5);
-const sameHostUrls = new Set(sameHostShown.map((r) => r.url));
+const sameHostUrls = new Set(sameHost.map((r) => r.url));
 const related = (relatedFor(l, links, 8) as typeof links)
   .filter((r) => !sameHostUrls.has(r.url))
   .slice(0, 5);
