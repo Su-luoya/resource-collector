@@ -32,6 +32,7 @@ import { suggestFor } from './lib/link-rules.mjs';
 import { parseBookmarks, tidyTitle } from './lib/bookmarks-html.mjs';
 import { createTaskStore } from './lib/dev-task.mjs';
 import { clientFor, refreshCache } from './lib/cloud-sync.mjs';
+import { toRow } from './lib/cloud.mjs';
 import type { LinkStatus, Resource } from './lib/links';
 
 const ROOT = process.cwd();
@@ -39,6 +40,8 @@ const CACHE_REL = '.cache/links.json';
 const PUBLISHED_REL = '.cache/published.json';
 const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
+/** 抓页面时只留这么多字：够抽 title / description，又不至于把整篇正文读进内存 */
+const PAGE_LIMIT = 400_000;
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -76,14 +79,28 @@ const readRows = (): Resource[] => loadStore().rows;
 
 const readStatuses = (): Record<string, LinkStatus> => loadStore().statuses;
 
-/** 写库统一入口：先校验，再整表对齐，最后刷新缓存与镜像 */
+/**
+ * 写库统一入口：先校验，再只写这一轮真正变了的行。
+ * 不能按本地列表整表对齐：库里可能在 dev 之外被加过行，一次对齐会把它们删掉。
+ * 删行同理，只删「刚才还在本地列表里、这次不在了」的那几条。
+ */
 const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: string; to?: string }) => {
   const rows = nextRows as Resource[];
   const { errors } = validateRows(rows, taxonomy());
   if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
   const client = clientFor({ write: true });
+  const before = new Map(store.rows.map((row) => [urlKey(row.url), row]));
+  const after = new Set(rows.map((row) => urlKey(row.url)));
+  const changed = rows.filter((row) => {
+    const old = before.get(urlKey(row.url));
+    return !old || JSON.stringify(toRow(old)) !== JSON.stringify(toRow(row));
+  });
+  const dropped = store.rows.filter((row) => !after.has(urlKey(row.url)));
+  // 改地址 = 新地址插一行 + 旧地址删一行；旧地址还在列表里时它已经在 dropped 里了
+  if (sync?.from && sync.from !== sync.to && !after.has(urlKey(sync.from))) dropped.push({ url: sync.from } as Resource);
   try {
-    await client.replaceLinks(rows);
+    await client.upsertLinks(changed);
+    for (const row of dropped) await client.deleteLink(row.url);
   } catch (error) {
     return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
   }
@@ -113,8 +130,7 @@ const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: st
 
 const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
 
-/** 删一条只动那一行：replaceLinks 会先把整表重写一遍，为删一行多等三四个往返。
- *  link_status 是 on delete cascade，库里会自己跟着删，这里只清内存镜像。 */
+/** 删一条只动那一行。link_status 是 on delete cascade，库里会自己跟着删，这里只清内存镜像。 */
 const applyDelete = async (rows: Resource[], index: number) => {
   const previous = rows[index];
   const client = clientFor({ write: true });
@@ -151,7 +167,19 @@ const fetchPage = async (url: string) => {
     if (!res.ok) return { ok: false, reason: `目标页返回 HTTP ${res.status}` };
     const type = (res.headers.get('content-type') ?? '').toLowerCase();
     if (type && !/html|xml/.test(type)) return { ok: false, reason: `不是网页（${type.split(';')[0]}）` };
-    return { ok: true, html: (await res.text()).slice(0, 400_000), final: res.url };
+    // 边读边停：有的页面正文好几 MB，读完再截会把内存和 6 秒都用光
+    const reader = res.body?.getReader();
+    if (!reader) return { ok: true, html: '', final: res.url };
+    const chunks: Buffer[] = [];
+    let size = 0;
+    while (size < PAGE_LIMIT) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      size += value.length;
+    }
+    await reader.cancel();
+    return { ok: true, html: Buffer.concat(chunks).toString('utf8').slice(0, PAGE_LIMIT), final: res.url };
   } catch (error) {
     const e = error as { name?: string; message?: string };
     return { ok: false, reason: e?.name === 'AbortError' ? '抓取超时（6 秒）' : `抓取失败：${e?.message ?? e}` };

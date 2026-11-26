@@ -71,6 +71,8 @@ export const toIconRow = ({ host, file, missedAt }) => {
  */
 export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' }) => {
   const base = `${url.replace(/\/+$/, '')}/rest/v1`;
+  /** 翻页大小。比 Max Rows 默认值 1000 小一点，服务端截断时也能继续往后走 */
+  const PAGE = 500;
   const headers = {
     apikey: key,
     Authorization: `Bearer ${key}`,
@@ -97,26 +99,33 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
     }
   };
 
-  const selectAll = async (table, query = 'select=*') => {
-    const rows = await request('GET', `/${table}?${query}`);
-    return Array.isArray(rows) ? rows : [];
+  /** PostgREST 的 in.(...) / gt.(...) 里带逗号的 URL 必须加双引号，否则会被当成两个值 */
+  const quote = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
+
+  /**
+   * 整表读取。Supabase 对每个响应都有行数上限（项目设置 Max Rows，默认 1000），
+   * 单请求只能拿到前面一小段——少掉的行会被整表写入当成「库里多出来的」删掉，
+   * 所以按主键游标翻页：每页从上一页最后一行的键往后取，服务端截到多短都不会跳行。
+   * 只有空页才算读完（短页不算：那可能只是被 Max Rows 截的）。
+   */
+  const selectAll = async (table, key = 'url') => {
+    const rows = [];
+    for (;;) {
+      const last = rows[rows.length - 1];
+      const after = last ? `&${key}=gt.${encodeURIComponent(quote(last[key]))}` : '';
+      const page = await request('GET', `/${table}?select=*&order=${key}.asc&limit=${PAGE}${after}`);
+      if (!Array.isArray(page) || !page.length) return rows;
+      // 服务端要是没按 gt 过滤，就会一直返回同一段：宁可报错，也不能把半张表当成整表
+      if (last && page[0][key] === last[key]) throw new Error(`${table} 分页没有前进：${key}=${page[0][key]}`);
+      rows.push(...page);
+    }
   };
 
-  /** PostgREST 的 in.(...) 里带逗号的 URL 必须加双引号，否则会被当成两个值 */
-  const quoteList = (values) => values.map((value) => `"${String(value).replace(/"/g, '\\"')}"`).join(',');
-
   return {
-    /**
-     * 整表对齐：先 upsert 本次的行，再删掉库里多出来的行。
-     * 删除名单靠先查一遍现有 url 求出，不把 95 条拼进请求头以外的字符串里，也避免 URL 含逗号时切错。
-     */
-    replaceLinks: async (links) => {
-      const rows = links.map(toRow);
-      const existing = (await selectAll('links', 'select=url')).map((row) => row.url);
-      const keep = new Set(rows.map((row) => row.url));
-      const stale = existing.filter((url) => !keep.has(url));
-      if (rows.length) await request('POST', '/links?on_conflict=url', { body: rows, prefer: 'resolution=merge-duplicates,return=minimal' });
-      if (stale.length) await request('DELETE', `/links?url=in.(${quoteList(stale)})`, { prefer: 'return=minimal' });
+    /** 一批 upsert：保存时通常只有一行变了，别为一行等三四个往返 */
+    upsertLinks: async (links) => {
+      if (!links.length) return;
+      await request('POST', '/links?on_conflict=url', { body: links.map(toRow), prefer: 'resolution=merge-duplicates,return=minimal' });
     },
     upsertLink: async (link) => {
       await request('POST', '/links?on_conflict=url', { body: toRow(link), prefer: 'resolution=merge-duplicates,return=minimal' });
@@ -125,7 +134,15 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
       await request('DELETE', `/links?url=eq.${encodeURIComponent(url)}`, { prefer: 'return=minimal' });
     },
     listLinks: async () => (await selectAll('links')).map(fromRow),
-    listStatus: async () => (await selectAll('link_status', 'select=*&order=checked.desc')).map(fromStatusRow),
+    listStatus: async () => (await selectAll('link_status')).map(fromStatusRow),
+    /** 周检一次写一百多条：一个数组请求，别一条一个往返 */
+    upsertStatuses: async (infos) => {
+      if (!infos.length) return;
+      await request('POST', '/link_status?on_conflict=url', {
+        body: infos.map(toStatusRow),
+        prefer: 'resolution=merge-duplicates,return=minimal',
+      });
+    },
     upsertStatus: async (info) => {
       await request('POST', '/link_status?on_conflict=url', { body: toStatusRow(info), prefer: 'resolution=merge-duplicates,return=minimal' });
     },
@@ -136,6 +153,6 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
       if (!rows.length) return;
       await request('POST', '/icons?on_conflict=host', { body: rows, prefer: 'resolution=merge-duplicates,return=minimal' });
     },
-    listIcons: async () => selectAll('icons', 'select=*'),
+    listIcons: async () => selectAll('icons', 'host'),
   };
 };

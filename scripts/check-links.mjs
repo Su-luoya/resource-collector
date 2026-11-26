@@ -38,16 +38,26 @@ const fixed = applyRedirectFixes(links, results, today);
 const { errors } = validateRows(fixed.rows, taxonomy, today);
 if (errors.length) throw new Error(`自动修复后的数据未通过校验：\n${errors.join('\n')}`);
 
-if (fixed.fixes.length) await client.replaceLinks(fixed.rows);
 let writeFailed = 0;
-for (const [url, info] of Object.entries(fixed.statuses)) {
+// 只写修好的那几行：按 cache 快照整表对齐，会把别人在这几分钟里新增的行当成「库里多出来的」删掉
+for (const fix of fixed.fixes) {
+  const row = fixed.rows.find((item) => item.url === fix.to);
+  if (!row) continue;
   try {
-    await client.upsertStatus({ ...info, url });
+    await client.upsertLink(row);
+    // 旧地址必须删掉，否则同一个站点会留两条；link_status 跟着级联删
+    await client.deleteLink(fix.from);
   } catch (error) {
-    // 别让一行坏数据终止整轮：继续写其它条目，最后汇总
     writeFailed++;
-    console.warn(`! 状态写入失败 ${url}：${error.message}`);
+    console.warn(`! 自动修复没写进去 ${fix.from} → ${fix.to}：${error.message}`);
   }
+}
+// 状态是派生数据：一次请求写完（一百多条一条一个往返要半分钟）
+try {
+  await client.upsertStatuses(Object.entries(fixed.statuses).map(([url, info]) => ({ ...info, url })));
+} catch (error) {
+  writeFailed++;
+  console.warn(`! 状态写入失败：${error.message}`);
 }
 await refreshCache(client);
 

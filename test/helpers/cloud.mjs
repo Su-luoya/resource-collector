@@ -36,7 +36,17 @@ export const startFakeCloud = async ({ links = [], status = [], icons = [] } = {
 
       if (req.method === 'GET') {
         const select = url.searchParams.get('select') ?? '*';
-        const rows = [...store.values()];
+        const order = (url.searchParams.get('order') ?? '').split('.')[0];
+        const limit = Number(url.searchParams.get('limit') ?? 0) || 0;
+        let rows = [...store.values()];
+        if (order) rows.sort((a, b) => String(a[order]).localeCompare(String(b[order])));
+        // 翻页游标：真实 PostgREST 的 `url=gt."…"`
+        const cursor = order ? url.searchParams.get(order) ?? '' : '';
+        if (cursor.startsWith('gt.')) {
+          const from = cursor.slice(3).replace(/^"|"$/g, '');
+          rows = rows.filter((row) => String(row[order]) > from);
+        }
+        if (limit) rows = rows.slice(0, limit);
         return reply(200, select === 'url' ? rows.map((row) => ({ url: row.url })) : rows);
       }
 

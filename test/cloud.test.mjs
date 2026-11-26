@@ -67,40 +67,59 @@ const fakeFetch = (calls, reply = ({ url }) => ({ status: 200, body: /select=url
   return { ok: status < 400, status, statusText: '', text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
 };
 
-test('replaceLinks 先 upsert 再删掉库里多出来的行', async () => {
+test('upsertLinks 一个请求写一批行', async () => {
   const calls = [];
-  const client = createClient({
-    url: 'https://x.supabase.co/',
-    key: 'k',
-    fetchImpl: fakeFetch(calls, ({ url, method }) =>
-      method === 'GET' ? { status: 200, body: [{ url: link.url }, { url: 'https://old.example/x,y' }] } : { status: 200, body: url },
-    ),
-  });
-  await client.replaceLinks([link]);
-  assert.equal(calls.length, 3);
-  assert.match(calls[0].url, /\/rest\/v1\/links\?select=url$/);
-  assert.match(calls[1].url, /\/rest\/v1\/links\?on_conflict=url$/);
-  assert.equal(calls[1].method, 'POST');
-  assert.equal(calls[1].prefer, 'resolution=merge-duplicates,return=minimal');
-  assert.equal(calls[1].body[0].url, link.url, '本次的行要 upsert');
-  assert.equal(calls[2].method, 'DELETE');
-  assert.match(calls[2].url, /url=in\.\("https:\/\/old\.example\/x,y"\)$/, '只在库里、不在本次列表里的行要删掉，带逗号的 URL 要整体加引号');
+  const client = createClient({ url: 'https://x.supabase.co/', key: 'k', fetchImpl: fakeFetch(calls, () => ({ status: 201, body: '' })) });
+  await client.upsertLinks([link, { ...link, url: 'https://example.com/cd' }]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/rest\/v1\/links\?on_conflict=url$/);
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].prefer, 'resolution=merge-duplicates,return=minimal');
+  assert.equal(calls[0].body.length, 2);
+  assert.equal(calls[0].body[0].unread, true, 'read: false 要变成 unread: true');
+  assert.equal(calls[0].body[1].url, 'https://example.com/cd');
 });
 
-test('库已对齐时什么都不写；库里有多余行时只删那些行', async () => {
-  const aligned = [];
-  await createClient({ url: 'https://x.supabase.co', key: 'k', fetchImpl: fakeFetch(aligned) }).replaceLinks([]);
-  assert.deepEqual(aligned.map((call) => call.method), ['GET'], '空库传空列表：只查一次就结束');
+test('空数组什么都不写', async () => {
+  const calls = [];
+  const client = createClient({ url: 'https://x.supabase.co', key: 'k', fetchImpl: fakeFetch(calls) });
+  await client.upsertLinks([]);
+  await client.upsertStatuses([]);
+  await client.upsertIcons([]);
+  assert.deepEqual(calls, []);
+});
 
-  const stale = [];
+test('整表读取按主键翻页：服务端每页只给 2 行也拿得全', async () => {
+  const rows = [1, 2, 3, 4, 5].map((n) => ({ url: `https://a.example/${n}`, section: ['tools'], facets: {}, desc: 'd', added: '2026-01-01' }));
+  const calls = [];
   const client = createClient({
     url: 'https://x.supabase.co',
     key: 'k',
-    fetchImpl: fakeFetch(stale, ({ method }) => ({ status: 200, body: method === 'GET' ? [{ url: 'https://gone.example/a' }] : '' })),
+    // 模拟 Max Rows 比请求的每页小：一次只回 2 行，没按 gt 过滤就会重复同一页
+    fetchImpl: async (url) => {
+      calls.push(url);
+      const after = new URL(url).searchParams.get('url');
+      const from = after ? rows.findIndex((row) => row.url === after.slice(4, -1)) + 1 : 0;
+      return { ok: true, status: 206, statusText: '', text: async () => JSON.stringify(rows.slice(from, from + 2)) };
+    },
   });
-  await client.replaceLinks([]);
-  assert.deepEqual(stale.map((call) => call.method), ['GET', 'DELETE']);
-  assert.match(stale[1].url, /url=in\.\("https:\/\/gone\.example\/a"\)$/);
+  const out = await client.listLinks();
+  assert.deepEqual(out.map((row) => row.url), rows.map((row) => row.url), '五行都要拿到，不能只拿前两行');
+  assert.match(calls[1], /url=gt\.%22https%3A%2F%2Fa\.example%2F2%22$/, '下一页从上一页最后一行的主键往后取');
+  assert.equal(calls.length, 4, '2+2+1 行，再请求一页空的才算读完');
+});
+
+test('upsertStatuses 一个请求写完一轮体检', async () => {
+  const calls = [];
+  const client = createClient({ url: 'https://x.supabase.co', key: 'k', fetchImpl: fakeFetch(calls, () => ({ status: 201, body: '' })) });
+  await client.upsertStatuses([
+    { url: 'https://a.b', status: 'ok', code: 200, checked: '2025-05-06' },
+    { url: 'https://c.d', status: 'fail', code: 404, checked: '2025-05-06' },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/rest\/v1\/link_status\?on_conflict=url$/);
+  assert.equal(calls[0].body.length, 2);
+  assert.deepEqual(calls[0].body[1], { url: 'https://c.d', status: 'fail', checked: '2025-05-06', code: 404 });
 });
 
 test('出错时把状态码与响应片段带进异常', async () => {
