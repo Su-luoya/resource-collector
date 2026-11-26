@@ -46,3 +46,13 @@ test('is:fail / is:warn 按最近一次体检结果过滤', () => {
   assert.equal(matchesQuery(parseQuery('is:warn'), { ...target, status: 'warn' }), true);
   assert.deepEqual(parseQuery('is:fail is:warn').unknownFlags, []);
 });
+
+test('domain: 只匹配这个域名本身与它的子域', () => {
+  const base = { haystack: '', sections: [], unread: false, hasNote: false, status: '' };
+  const hit = (host, query) => matchesQuery(parseQuery(query), { ...base, host });
+  assert.equal(hit('example.com', 'domain:example.com'), true);
+  assert.equal(hit('docs.example.com', 'domain:example.com'), true);
+  assert.equal(hit('notexample.com', 'domain:example.com'), false);
+  assert.equal(hit('example.com.evil.net', 'domain:example.com'), false);
+});
+

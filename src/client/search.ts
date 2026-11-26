@@ -58,9 +58,12 @@ export type QueryTarget = {
   status: string;
 };
 
+/** domain: 只认这个域名本身和它的子域；`example.com` 不该命中 `notexample.com` */
+const hostMatches = (host: string, domain: string) => host === domain || host.endsWith(`.${domain}`);
+
 export const matchesQuery = (parsed: ParsedQuery, target: QueryTarget): boolean => {
   if (parsed.sections.length && !parsed.sections.some((id) => target.sections.includes(id))) return false;
-  if (parsed.domains.length && !parsed.domains.some((d) => target.host.includes(d))) return false;
+  if (parsed.domains.length && !parsed.domains.some((d) => hostMatches(target.host, d))) return false;
   for (const flag of parsed.flags) {
     if (flag === 'unread' && !target.unread) return false;
     if (flag === 'read' && target.unread) return false;
