@@ -113,6 +113,31 @@ const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: st
 
 const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
 
+/** 删一条只动那一行：replaceLinks 会先把整表重写一遍，为删一行多等三四个往返。
+ *  link_status 是 on delete cascade，库里会自己跟着删，这里只清内存镜像。 */
+const applyDelete = async (rows: Resource[], index: number) => {
+  const previous = rows[index];
+  const client = clientFor({ write: true });
+  try {
+    await client.deleteLink(previous.url);
+  } catch (error) {
+    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
+  }
+  delete store.statuses[previous.url];
+  const next = rows.filter((_, i) => i !== index);
+  store.rows = next;
+  const data = await refreshCache(client);
+  // 拿重新拉回来的库对一下：DELETE 的 url 对不上时会静默地一条都不删，得告诉人
+  const left = Array.isArray(data?.links) && data.links.some((row: Resource) => urlKey(row.url) === urlKey(previous.url));
+  if (left) {
+    return json(
+      { ok: false, message: `库里那条还在，删除没生效：刷新页面重试（${previous.url}）` },
+      502,
+    );
+  }
+  return json({ ok: true, message: `已删除：${previous.title}`, total: next.length });
+};
+
 /** 抓一个网页的 HTML：api/meta 与 api/ai-draft 共用，失败原因统一透给前端 */
 const fetchPage = async (url: string) => {
   const ctrl = new AbortController();
@@ -652,8 +677,7 @@ const handleEdit = async (request: Request) => {
   if (action === 'add' && previous) return json({ ok: false, message: `这条已在库里：${previous.url}` }, 409);
   if (action !== 'add' && !previous) return json({ ok: false, message: `库里没有这条：${target.url}` }, 404);
   if (action === 'delete') {
-    const response = await applyEdit(rows.filter((_, i) => i !== index), `已删除：${previous.title}`, { from: previous.url });
-    return response;
+    return applyDelete(rows, index);
   }
 
   const replacement = action === 'update' && body.newUrl !== undefined ? normUrl(body.newUrl) : target;
