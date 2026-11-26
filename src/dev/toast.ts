@@ -5,6 +5,12 @@
 
 export type ToastTone = 'ok' | 'bad' | 'warn' | 'info' | 'busy';
 
+export type ToastHandle = {
+  close: () => void;
+  /** 改文案：长任务报秒数、逐条报进度都靠它，不用堆一建新的 toast */
+  update: (text: string, detail?: string) => void;
+};
+
 export type ToastOptions = {
   tone?: ToastTone;
   /** 详情行，失败时放错误原因 */
@@ -69,6 +75,24 @@ export const toast = (text: string, options: ToastOptions = {}) => {
     window.setTimeout(() => item.remove(), 160);
   };
 
+  const update = (nextText: string, nextDetail?: string) => {
+    line.textContent = nextText;
+    history.push({ text: nextText, tone, at: Date.now() });
+    if (history.length > MAX_HISTORY) history.shift();
+    if (nextDetail === undefined) return;
+    let detailEl = body.querySelector('.dev-toast-detail');
+    if (!nextDetail) {
+      detailEl?.remove();
+      return;
+    }
+    if (!detailEl) {
+      detailEl = document.createElement('p');
+      detailEl.className = 'dev-toast-detail';
+      body.append(detailEl);
+    }
+    detailEl.textContent = nextDetail;
+  };
+
   if (options.action) {
     const action = document.createElement('button');
     action.type = 'button';
@@ -97,8 +121,10 @@ export const toast = (text: string, options: ToastOptions = {}) => {
   const items = Array.from(box.children);
   for (const old of items.slice(0, Math.max(0, items.length - MAX_TOASTS))) old.remove();
 
-  timer = window.setTimeout(close, options.timeout ?? 4000);
+  // timeout: 0 是真「不自动关」：以前写成 ?? 4000，0 会被当成「立刻关」，忙碌提示一闪就没了
+  const ms = options.timeout ?? 4000;
+  if (ms > 0) timer = window.setTimeout(close, ms);
   // 鼠标停上去就不自动消失，方便读完错误原因
   item.addEventListener('mouseenter', () => window.clearTimeout(timer));
-  return close;
+  return { close, update };
 };

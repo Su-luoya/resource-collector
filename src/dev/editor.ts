@@ -172,6 +172,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const fail = (text: string) => {
     errBox.hidden = !text;
     errBox.textContent = text;
+    // 表单比屏幕高：错误框可能在视口外，不滚过去用户会以为点了没反应
+    if (text) errBox.scrollIntoView({ block: 'nearest' });
   };
 
   async function send<T extends { ok: boolean } = ApiReply>(name: string, body?: unknown): Promise<T> {
@@ -292,15 +294,14 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     syncSelectBar();
   }
 
-  /** 删掉后先从页面上抹掉这张卡片；不整页刷新，否则撤销的 Toast 也会被刷没了 */
+  /** 删掉后直接从页面上抹掉这张卡片；不整页刷新，否则撤销的 Toast 也会被刷没了 */
   const dropCard = (targetUrl: string) => {
     const card = cardEls.find((item) => (item.getAttribute('href') ?? '') === targetUrl);
     if (!card) return;
     // 卡片外面还包着一层 .card-slot（给「详情」链接留位置），连带它一起去掉，否则留下一个空格子
     (card.closest('.card-slot') ?? card).remove();
-    const shownEl = document.getElementById('shown');
-    const count = Number(shownEl?.textContent ?? '');
-    if (shownEl && Number.isFinite(count)) shownEl.textContent = String(Math.max(0, count - 1));
+    // 「显示 N / 总数」、分区与分类计数、最近 7 天全交给 filter.ts 重算：它从 DOM 现取卡片
+    document.dispatchEvent(new CustomEvent('dev:cards-changed'));
   };
 
   /** 写库要往返一次 Supabase（通常 0.5–2 秒）。这段时间卡片必须自己说「正在写」，
@@ -317,6 +318,20 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
 
   /** 常驻的「正在做」提示，操作结束后由调用方关掉 */
   const busyToast = (text: string, detail?: string) => toast(text, { tone: 'busy', timeout: 0, detail });
+
+  /** busy 提示 + 跳秒：请求久了能看出还在动，不是冻住了。返回停止函数 */
+  const tickingBusy = (text: string, detail?: string) => {
+    const handle = busyToast(text, detail);
+    const started = Date.now();
+    const id = window.setInterval(
+      () => handle.update(`${text} ${Math.round((Date.now() - started) / 1000)} 秒`),
+      500,
+    );
+    return () => {
+      window.clearInterval(id);
+      handle.close();
+    };
+  };
 
   /** 网络请求本身没有超时，卡死时要自己给出终止条件，否则忙碌态会一直挂着 */
   const withTimeout = <T>(task: Promise<T>, ms: number, onTimeout: () => T): Promise<T> => {
@@ -347,10 +362,16 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
           clearUndo();
           let ok = 0;
           const failed: string[] = [];
-          for (const row of rows) {
-            const res = await send('edit', { action: 'add', ...row });
-            if (res.ok) ok++;
-            else failed.push(`${row.title}：${res.message || '添加失败'}`);
+          const pending = busyToast(`正在恢复 ${total} 条…`, '逐条写库，恢复完会自动刷新');
+          try {
+            for (const row of rows) {
+              pending.update(`正在恢复 ${ok + failed.length + 1}/${total} 条…`, row.title);
+              const res = await send('edit', { action: 'add', ...row });
+              if (res.ok) ok++;
+              else failed.push(`${row.title}：${res.message || '添加失败'}`);
+            }
+          } finally {
+            pending.close();
           }
           if (failed.length) flash(`只恢复了 ${ok}/${total} 条`, 'bad');
           else flash(`已恢复 ${ok} 条`, 'ok');
@@ -380,11 +401,22 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     offerUndo(pending.rows, { at: pending.at, timeout: left });
   };
 
-  /** 置顶开关：只改 pin，不动其他字段 */
+  /** 置顶开关：只改 pin，不动其他字段。星标先翻、失败再翻回来，别让人盯着没反应的星星 */
   async function togglePin(card: HTMLElement, star: HTMLButtonElement) {
     const row = rowOf(card);
     const next = card.dataset.pin !== '1';
+    const paint = (on: boolean) => {
+      card.dataset.pin = on ? '1' : '';
+      star.textContent = on ? '★' : '☆';
+      star.classList.toggle('on', on);
+      star.title = on ? '取消置顶' : '置顶（浏览时排在最前）';
+      star.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    paint(next);
+    // 浏览时置顶优先：让 filter.ts 立刻把卡片搬到该在的位置
+    document.dispatchEvent(new CustomEvent('dev:cards-changed'));
     star.disabled = true;
+    say(next ? `正在置顶「${row.title}」…` : `正在取消置顶「${row.title}」…`, 'dirty');
     const res = await send('edit', {
       action: 'update',
       ...row,
@@ -393,15 +425,16 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     });
     star.disabled = false;
     if (!res.ok) {
+      paint(!next);
+      document.dispatchEvent(new CustomEvent('dev:cards-changed'));
+      say(res.message || '置顶失败', 'bad');
       toast(res.errors?.length ? res.errors.join('；') : res.message || '置顶失败', { tone: 'bad' });
       return;
     }
-    card.dataset.pin = next ? '1' : '';
-    star.textContent = next ? '★' : '☆';
-    star.classList.toggle('on', next);
-    star.title = next ? '取消置顶' : '置顶（浏览时排在最前）';
-    star.setAttribute('aria-pressed', next ? 'true' : 'false');
-    flash(next ? `已置顶：${row.title}` : `已取消置顶：${row.title}`, 'ok');
+    const text = next ? `已置顶：${row.title}` : `已取消置顶：${row.title}`;
+    say(text);
+    // 写缓存会让 Vite 整页重载，提示存进 sessionStorage，重载后再弹
+    flash(text, 'ok');
     refresh();
   }
 
@@ -436,7 +469,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     box.append(edit, del);
     card.append(box);
 
-    // 置顶星标：立即写盘。写盘会让 Vite 整页重载，所以提示走 flash 中转。
+    // 置顶星标：立即写盘。星标先翻、失败翻回去，刷页时也已经是对的状态。
     const pinned = card.dataset.pin === '1';
     const star = document.createElement('button');
     star.type = 'button';
@@ -510,10 +543,19 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const seq = ++qualitySeq;
     const value = url.value.trim();
     urlFeedback.replaceChildren();
-    urlFeedback.hidden = true;
-    if (!value) return;
+    if (!value) {
+      urlFeedback.hidden = true;
+      return;
+    }
+    // 请求要往返一次：先摆一句「检查中」，否则提示先空掉、过一会儿才冒出来
+    const checking = document.createElement('p');
+    checking.className = 'dev-url-checking';
+    checking.textContent = '检查中…';
+    urlFeedback.append(checking);
+    urlFeedback.hidden = false;
     const res = await send<DuplicateReply>('duplicates', { url: value, title: title.value, excludeUrl: editing });
     if (seq !== qualitySeq) return;
+    urlFeedback.replaceChildren();
     if (!res.ok) {
       urlFeedback.textContent = res.message || 'URL 检查失败';
       urlFeedback.hidden = false;
@@ -747,7 +789,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       deleteBtn.textContent = '删除中…';
     }
     say(`正在删除${label}…`, 'dirty');
-    const stopPending = busyToast(`正在删除${label}`, '写库通常一两秒，删完可以撤销');
+    const stopPending = tickingBusy(`正在删除${label}`, '写库通常一两秒，删完可以撤销');
 
     const res = await withTimeout(
       send('edit', { action: 'delete', url: targetUrl }),
@@ -780,11 +822,16 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     if (batchActive) {
       const draft = currentDraft();
       const last = batchIndex === batchDrafts.length - 1;
+      const restore = saveBtn.textContent || '保存';
       saveBtn.disabled = true;
+      saveBtn.textContent = last ? '写入中…' : '校验中…';
+      const stopPending = tickingBusy(last ? '正在写入整批…' : '正在校验这一条…', '写库通常一两秒');
       const res = await send('batch-add', last
         ? { rows: [...batchReviewed, draft] }
         : { rows: [draft], dryRun: true });
+      stopPending();
       saveBtn.disabled = false;
+      saveBtn.textContent = restore;
       if (!res.ok) {
         fail(res.errors?.length ? res.errors.join('；') : res.message || '草稿校验失败');
         return;
@@ -810,9 +857,14 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       url: editing ?? nextUrl,
       ...(editing ? { newUrl: nextUrl } : {}),
     };
+    const restore = saveBtn.textContent || '保存';
     saveBtn.disabled = true;
+    saveBtn.textContent = '保存中…';
+    const stopPending = tickingBusy(editing ? '正在更新…' : '正在写入…', '写库通常一两秒，存完会自动刷新');
     const res = await send('edit', payload);
+    stopPending();
     saveBtn.disabled = false;
+    saveBtn.textContent = restore;
     if (!res.ok) {
       fail(res.errors?.length ? res.errors.join('；') : res.message || '保存失败');
       return;
@@ -1506,7 +1558,8 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     try {
       for (const entry of entries) {
         setCardBusy(entry.row.url, true, '删除中…');
-        say(`正在删除第 ${removed.length + 1}/${entries.length} 条…`, 'dirty');
+        stopPending.update(`正在删除第 ${removed.length + 1}/${entries.length} 条…`, entry.row.title);
+        say(`正在删除 ${removed.length + 1}/${entries.length} 条…`, 'dirty');
         const res = await send('edit', { action: 'delete', url: entry.row.url });
         if (!res.ok) {
           setCardBusy(entry.row.url, false);
@@ -1519,7 +1572,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
         say(`已删除 ${removed.length}/${entries.length}`);
       }
     } finally {
-      stopPending();
+      stopPending.close();
       selectDelete.disabled = false;
       syncSelectBar();
     }
