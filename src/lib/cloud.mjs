@@ -73,6 +73,8 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
   const base = `${url.replace(/\/+$/, '')}/rest/v1`;
   /** 翻页大小。比 Max Rows 默认值 1000 小一点，服务端截断时也能继续往后走 */
   const PAGE = 500;
+  /** 超过这么多行还读不完，就当分页没生效，直接报错而不是一直转 */
+  const MAX_ROWS = 20000;
   const headers = {
     apikey: key,
     Authorization: `Bearer ${key}`,
@@ -99,25 +101,23 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
     }
   };
 
-  /** PostgREST 的 in.(...) / gt.(...) 里带逗号的 URL 必须加双引号，否则会被当成两个值 */
-  const quote = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
-
   /**
-   * 整表读取。Supabase 对每个响应都有行数上限（项目设置 Max Rows，默认 1000），
-   * 单请求只能拿到前面一小段——少掉的行会被整表写入当成「库里多出来的」删掉，
-   * 所以按主键游标翻页：每页从上一页最后一行的键往后取，服务端截到多短都不会跳行。
-   * 只有空页才算读完（短页不算：那可能只是被 Max Rows 截的）。
+   * 整表读取。按主键排序、用 limit/offset 翻页，直到某一页为空才停。
+   *
+   * 不用 `gt."上一个主键"` 当游标：Supabase 前面那层会把带 URL 的过滤参数吃掉，
+   * 原样返回整张表（实测），循环就永远结束不了。
+   * 也不能「取回不足一页就当读完」：项目设了 Max Rows 时服务端会少给几行，那样会悄悄截断，
+   * 截掉的最后一行会在整表写入时被当成「库里多出来的」删掉。所以只认空页。
    */
   const selectAll = async (table, key = 'url') => {
     const rows = [];
     for (;;) {
-      const last = rows[rows.length - 1];
-      const after = last ? `&${key}=gt.${encodeURIComponent(quote(last[key]))}` : '';
-      const page = await request('GET', `/${table}?select=*&order=${key}.asc&limit=${PAGE}${after}`);
-      if (!Array.isArray(page) || !page.length) return rows;
-      // 服务端要是没按 gt 过滤，就会一直返回同一段：宁可报错，也不能把半张表当成整表
-      if (last && page[0][key] === last[key]) throw new Error(`${table} 分页没有前进：${key}=${page[0][key]}`);
-      rows.push(...page);
+      const page = await request('GET', `/${table}?select=*&order=${key}.asc&limit=${PAGE}&offset=${rows.length}`);
+      const list = Array.isArray(page) ? page : [];
+      if (!list.length) return rows;
+      rows.push(...list);
+      // 服务端要是连 offset 也不认，rows 会一直涨：宁可报错，也不能把半张表当成整表
+      if (rows.length > MAX_ROWS) throw new Error(`${table} 分页没有前进，已取到 ${rows.length} 行`);
     }
   };
 

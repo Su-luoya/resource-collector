@@ -40,12 +40,9 @@ export const startFakeCloud = async ({ links = [], status = [], icons = [] } = {
         const limit = Number(url.searchParams.get('limit') ?? 0) || 0;
         let rows = [...store.values()];
         if (order) rows.sort((a, b) => String(a[order]).localeCompare(String(b[order])));
-        // 翻页游标：真实 PostgREST 的 `url=gt."…"`
-        const cursor = order ? url.searchParams.get(order) ?? '' : '';
-        if (cursor.startsWith('gt.')) {
-          const from = cursor.slice(3).replace(/^"|"$/g, '');
-          rows = rows.filter((row) => String(row[order]) > from);
-        }
+        // 与真实接口一致：先按 offset 跳过，再按 limit 截长度
+        const offset = Number(url.searchParams.get('offset') ?? 0) || 0;
+        if (offset) rows = rows.slice(offset);
         if (limit) rows = rows.slice(0, limit);
         return reply(200, select === 'url' ? rows.map((row) => ({ url: row.url })) : rows);
       }

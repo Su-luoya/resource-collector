@@ -89,23 +89,22 @@ test('空数组什么都不写', async () => {
   assert.deepEqual(calls, []);
 });
 
-test('整表读取按主键翻页：服务端每页只给 2 行也拿得全', async () => {
+test('整表读取按 offset 翻页：服务端每页只给 2 行也拿得全', async () => {
   const rows = [1, 2, 3, 4, 5].map((n) => ({ url: `https://a.example/${n}`, section: ['tools'], facets: {}, desc: 'd', added: '2026-01-01' }));
   const calls = [];
   const client = createClient({
     url: 'https://x.supabase.co',
     key: 'k',
-    // 模拟 Max Rows 比请求的每页小：一次只回 2 行，没按 gt 过滤就会重复同一页
+    // 模拟 Max Rows 比请求的每页小：一次只回 2 行，短页不能当成读完了
     fetchImpl: async (url) => {
       calls.push(url);
-      const after = new URL(url).searchParams.get('url');
-      const from = after ? rows.findIndex((row) => row.url === after.slice(4, -1)) + 1 : 0;
-      return { ok: true, status: 206, statusText: '', text: async () => JSON.stringify(rows.slice(from, from + 2)) };
+      const offset = Number(new URL(url).searchParams.get('offset') ?? 0);
+      return { ok: true, status: 206, statusText: '', text: async () => JSON.stringify(rows.slice(offset, offset + 2)) };
     },
   });
   const out = await client.listLinks();
   assert.deepEqual(out.map((row) => row.url), rows.map((row) => row.url), '五行都要拿到，不能只拿前两行');
-  assert.match(calls[1], /url=gt\.%22https%3A%2F%2Fa\.example%2F2%22$/, '下一页从上一页最后一行的主键往后取');
+  assert.match(calls[1], /offset=2(&|$)/, '下一页从上一页末尾继续');
   assert.equal(calls.length, 4, '2+2+1 行，再请求一页空的才算读完');
 });
 
