@@ -14,12 +14,23 @@ const escapeHtml = (text) =>
 const linkify = (href, label) =>
   `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 
-const inline = (text) =>
-  escapeHtml(text)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // 只认 http(s)：别让 javascript: 之类的东西混进 href
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, href) => linkify(href, label));
+/** 行内强调：只作用于普通文字，不碰已经摊成的 HTML 与链接地址 */
+const emphasis = (text) =>
+  text.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+/**
+ * 先把代码与链接换成占位符，再处理粗体与代码，最后才填回去。
+ * 否则 `[x](https://a.com/a*b*c)` 的地址会被当成粗体、`\`[x](url)\`` 里的链接会被强行加链接。
+ * 链接只认 http(s)：别让 javascript: 之类的东西混进 href。
+ */
+const inline = (text) => {
+  const parts = [];
+  const keep = (html) => `\u0000${parts.push(html) - 1}\u0000`;
+  const html = escapeHtml(text)
+    .replace(/`([^`]+)`/g, (_, code) => keep(`<code>${code}</code>`))
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, href) => keep(linkify(href, emphasis(label))));
+  return emphasis(html).replace(/\u0000(\d+)\u0000/g, (_, i) => parts[Number(i)] ?? '');
+};
 
 const isBullet = (line) => /^\s*[-*]\s+/.test(line);
 

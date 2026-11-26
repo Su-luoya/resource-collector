@@ -34,3 +34,12 @@ test('属性里的引号被转义，不能借笔记注入属性', () => {
   const html = renderNote('[x](https://example.com/"onmouseover="alert(1))');
   assert.doesNotMatch(html, /onmouseover="alert/);
 });
+
+test('链接地址里的星号、以及代码片段里的链接，都不会被当成格式', () => {
+  const html = renderNote('[x](https://example.com/a*b*c) 与 \`[y](https://example.com/z)\`');
+  assert.match(html, /href="https:\/\/example.com\/a\*b\*c"/, '地址原样进 href');
+  assert.doesNotMatch(html, /<strong>/, '地址里的星号不该变成粗体');
+  assert.match(html, /<code>\[y\]\(https:\/\/example.com\/z\)<\/code>/, '代码片段里不生成链接');
+  assert.equal((html.match(/<a /g) ?? []).length, 1);
+});
+
