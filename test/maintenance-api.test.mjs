@@ -146,6 +146,33 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.equal(rowNow().note, undefined);
     assert.equal(rowNow().read, undefined);
 
+    // 只改置顶：只写那一行，不再整表重写（实测能从 2.8 秒降到一次往返）
+    const pinStart = cloud.requests.length;
+    const pinOnly = await api('edit', { action: 'update', url: final, ...rowNow(), pin: true });
+    assert.equal(pinOnly.ok, true, pinOnly.message);
+    const pinWrites = cloud.requests.slice(pinStart).filter((r) => r.table === 'links' && r.method !== 'GET');
+    assert.deepEqual(pinWrites.map((r) => r.method), ['POST']);
+    assert.match(pinWrites[0].query, /on_conflict=url/);
+    assert.equal(
+      cloud.requests.slice(pinStart).filter((r) => r.table === 'links' && /select=url/.test(r.query)).length,
+      0,
+      '置顶不该再拉全表 URL',
+    );
+    assert.equal(rowNow().pin, true);
+
+    // 改别的字段还是走整表对齐（要处理 URL 变更与删除），不能被置顶快路径误收
+    const renameStart = cloud.requests.length;
+    assert.equal((await api('edit', { action: 'update', url: final, title: '再改个名字' })).ok, true);
+    assert.ok(cloud.requests.slice(renameStart).some((r) => r.table === 'links' && /select=url/.test(r.query)));
+    assert.equal(rowNow().pin, true, '改标题不该把置顶洗掉');
+
+    // 什么都没改就保存（pin 没变）：不能被置顶快路径当成置顶操作
+    const noopStart = cloud.requests.length;
+    const noop = await api('edit', { action: 'update', url: final, ...rowNow() });
+    assert.equal(noop.ok, true, noop.message);
+    assert.doesNotMatch(noop.message, /置顶/);
+    assert.ok(cloud.requests.slice(noopStart).some((r) => r.table === 'links' && /select=url/.test(r.query)));
+
     const removed = await api('edit', { action: 'delete', url: failed });
     assert.equal(removed.ok, true, removed.message);
     assert.equal(statuses()[failed], undefined);

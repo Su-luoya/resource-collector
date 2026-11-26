@@ -138,6 +138,35 @@ const applyDelete = async (rows: Resource[], index: number) => {
   return json({ ok: true, message: `已删除：${previous.title}`, total: next.length });
 };
 
+/** 判断两次写入是不是只差 pin：置顶星标一下，不该把 110 行重写一遍（实测 2.8 秒） */
+const rowShape = (input: object) => {
+  const row = input as Partial<Resource>;
+  return JSON.stringify([
+    row.title,
+    row.url,
+    row.section,
+    row.facets,
+    row.desc,
+    row.added,
+    row.note ?? '',
+    row.read ?? true,
+  ]);
+};
+
+const applyPin = async (rows: Resource[], index: number, next: Resource) => {
+  const client = clientFor({ write: true });
+  try {
+    await client.upsertLink(next);
+  } catch (error) {
+    return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
+  }
+  const nextRows = rows.map((row, i) => (i === index ? next : row));
+  store.rows = nextRows;
+  await refreshCache(client);
+  const message = next.pin ? `已置顶：${next.title}` : `已取消置顶：${next.title}`;
+  return json({ ok: true, message, total: nextRows.length });
+};
+
 /** 抓一个网页的 HTML：api/meta 与 api/ai-draft 共用，失败原因统一透给前端 */
 const fetchPage = async (url: string) => {
   const ctrl = new AbortController();
@@ -712,6 +741,11 @@ const handleEdit = async (request: Request) => {
   if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
   if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
   const next = previous ? rows.map((r, i) => (i === index ? row : r)) : [...rows, row];
+  // 只改了置顶（星标）：单行 upsert 一个往返，不用整表重写。
+  // pin 没变就不是置顶操作（比如原样保存），仍走整表，消息才说得对。
+  if (previous && previous.pin !== row.pin && rowShape(row) === rowShape(previous)) {
+    return applyPin(rows, index, row as Resource);
+  }
   const response = await applyEdit(next, `${previous ? '已更新' : '已新增'}：${row.title}`, previous ? { from: previous.url, to: row.url } : undefined);
   return response;
 };
