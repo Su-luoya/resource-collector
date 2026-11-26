@@ -112,6 +112,7 @@ const rssHref = `${base}rss.xml`;
             class="section-link"
             class:list={{ 'is-active': item.active }}
             href={item.href}
+            data-section={item.id}
             aria-current={item.active ? 'page' : undefined}
           >
             <span>{item.label}</span>
@@ -159,7 +160,7 @@ const rssHref = `${base}rss.xml`;
       <button id="recent-toggle" type="button">最近 7 天新增 <strong id="recent-count">0</strong> 条 · 只看这些</button>
     </p>
     <div class="toolbar">
-    <span>显示 <strong id="shown">{total}</strong> / {total} 条</span>
+    <span>显示 <strong id="shown">{total}</strong> / <span id="total">{total}</span> 条</span>
     <button id="copy" type="button" title="复制为 Markdown 列表" hidden>复制这 {total} 条</button>
     <span id="hint"></span>
     <button id="clear" type="button" hidden>清除筛选</button>

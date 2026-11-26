@@ -10,6 +10,8 @@ import { highlightPattern, highlightPieces, matchesQuery, parseQuery } from './s
 import { compareNewest, comparePinned } from '../lib/ordering.mjs';
 
 const cards = Array.from(document.querySelectorAll<HTMLAnchorElement>('.card'));
+/** dev 里删/加卡片不刷页：每次重算都从 DOM 现取，别抱一份加载时的快照（否则删掉的卡会被 apply 重新算回计数） */
+const liveCards = () => cards.filter((card) => card.isConnected);
 const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip[data-facet]'));
 /** 分区导航：记住原始地址，apply 时把当前筛选拼成 hash 带上，跨页不丢状态 */
 const navLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('.section-link'));
@@ -34,7 +36,8 @@ const recentCutoff = (() => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 })();
-const recentTotal = cards.filter((card) => (card.dataset.added || '') >= recentCutoff).length;
+const recentTotalOf = () =>
+  liveCards().filter((card) => (card.dataset.added || '') >= recentCutoff).length;
 let recentOnly = false;
 
 /** 轴 = 页面渲染出来的 facet 行；首页只有 section 一条，分区页是该分区的各条轴 */
@@ -55,7 +58,7 @@ const valuesOf = (card: HTMLAnchorElement, axis: string) =>
 /** 卡片外面包了一层 .card-slot，隐藏与重排都作用在它上面：判断可见性必须看外层，看 .card 永远是可见的 */
 const slotOf = (card: HTMLAnchorElement) => card.parentElement ?? card;
 
-const visible = () => cards.filter((card) => !slotOf(card).hidden);
+const visible = () => liveCards().filter((card) => !slotOf(card).hidden);
 
 /** 标题与简介的原文：高亮要从原文重建，不能拿已经插了 <mark> 的 textContent 当源 */
 const hlEls = cards.flatMap((card) => Array.from(card.querySelectorAll<HTMLElement>('[data-hl]')));
@@ -92,7 +95,7 @@ function paint(pattern: RegExp | null) {
  */
 function reorder(idle: boolean) {
   if (!grid) return;
-  const ordered = [...cards].sort((a, b) => {
+  const ordered = [...liveCards()].sort((a, b) => {
     const left = { pin: a.dataset.pin === '1', added: a.dataset.added || '', title: hlText.get(a.querySelector<HTMLElement>('h2')!) || '' };
     const right = { pin: b.dataset.pin === '1', added: b.dataset.added || '', title: hlText.get(b.querySelector<HTMLElement>('h2')!) || '' };
     return idle ? comparePinned(left, right) : compareNewest(left, right);
@@ -101,6 +104,31 @@ function reorder(idle: boolean) {
   if (ordered.every((card, index) => grid.children[index] === slotOf(card))) return;
   // 卡片外面包了一层 .card-slot（为了放「详情」链接，不能套在 <a> 里）：重排要搬整块
   for (const card of ordered) grid.append(slotOf(card));
+}
+
+/**
+ * 侧栏分区、分类 chip、工具条的「/ N 条」全是服务端渲染的静态数：dev 里删/加了卡片
+ * 它们不会自己变，不重算就会出现「显示 109 / 110 条」这种自相矛盾。
+ */
+function syncCounts() {
+  const live = liveCards();
+  const totalEl = document.getElementById('total');
+  if (totalEl) totalEl.textContent = String(live.length);
+  for (const link of navLinks) {
+    const n = link.querySelector('.n');
+    if (!n) continue;
+    const id = link.dataset.section || '';
+    n.textContent = String(
+      !id || id === 'all' ? live.length : live.filter((card) => (card.dataset.section || '').split(' ').includes(id)).length,
+    );
+  }
+  for (const chip of chips) {
+    const n = chip.querySelector('.n');
+    const axis = chip.dataset.facet || '';
+    if (!n || !axis) continue;
+    const value = chip.dataset.value || '';
+    n.textContent = String(live.filter((card) => valuesOf(card, axis).includes(value)).length);
+  }
 }
 
 function apply() {
@@ -120,7 +148,7 @@ function apply() {
     });
   let n = 0;
 
-  for (const card of cards) {
+  for (const card of liveCards()) {
     const okFacets = active.every((axis) => valuesOf(card, axis).some((v) => picked[axis].has(v)));
     const okRecent = !recentOnly || (card.dataset.added || '') >= recentCutoff;
     const show = okFacets && okRecent && matchCard(card);
@@ -133,12 +161,14 @@ function apply() {
   paint(highlightPattern(parsed.text));
 
   shown.textContent = String(n);
+  syncCounts();
   empty.hidden = n > 0;
   copyBtn.hidden = n === 0;
   copyBtn.textContent = `复制这 ${n} 条`;
   copyStatus.textContent = '';
   copyFallback.hidden = true;
 
+  const recentTotal = recentTotalOf();
   recentBar.hidden = recentTotal === 0;
   recentToggle.innerHTML = recentOnly
     ? `正在只看最近 ${RECENT_DAYS} 天的 <strong>${recentTotal}</strong> 条 · 显示全部`
@@ -296,6 +326,10 @@ themeBtn.addEventListener('click', () => {
     /* 隐私模式下写不进去，忽略 */
   }
 });
+
+// dev 编辑层删/改了卡片就喊一声：数字与排序跟着重算，不用整页刷新。
+// 放进 DEV 判断里，构建时整段被摇掉，dist 里不留痕迹。
+if (import.meta.env.DEV) document.addEventListener('dev:cards-changed', apply);
 
 readHash();
 
