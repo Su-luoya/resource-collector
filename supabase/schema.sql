@@ -9,7 +9,6 @@ create table if not exists public.links (
   facets      jsonb not null default '{}'::jsonb,
   "desc"      text not null,
   added       date not null default current_date,
-  pin         boolean not null default false,
   note        text,
   unread      boolean not null default false,
   updated_at  timestamptz not null default now()
@@ -17,6 +16,9 @@ create table if not exists public.links (
 
 comment on column public.links.note is 'Markdown 子集写的研究笔记，空值表示没有';
 comment on column public.links.unread is 'true 表示「待看」，对应 YAML 里的 read: false';
+
+-- 置顶功能已下线：老库重跑这份 schema 时顺手把列删掉（新库建表就没有它）
+alter table public.links drop column if exists pin;
 
 create index if not exists links_section_idx on public.links using gin (section);
 create index if not exists links_added_idx on public.links (added desc);

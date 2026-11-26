@@ -35,7 +35,6 @@ test('is:fail / is:warn 按最近一次体检结果过滤', () => {
     haystack: 'x',
     sections: [],
     host: '',
-    pinned: false,
     unread: false,
     hasNote: false,
     status: 'fail',

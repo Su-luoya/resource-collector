@@ -299,35 +299,8 @@ test('diffRowDetails：两侧同名各一条但内容不同，也只当修改', 
   assert.equal(details.added.length + details.removed.length, 0);
 });
 
-test('pin: 只在置顶时写出字段，未置顶的数据与以前逐字一致', () => {
-  const plain = row();
-  const yaml = dumpLinks([plain], '');
-  assert.equal(yaml.includes('pin'), false);
-
-  const pinned = row({ pin: true });
-  const out = dumpLinks([pinned], '');
-  assert.match(out, /pin: true/);
-
-  const back = parseLinks(out);
-  assert.equal(back[0].pin, true);
-  assert.deepEqual(validateRows(back, taxonomy).errors, []);
-});
-
-test('pin: 非布尔值被校验拦下，false 视为「未置顶」', () => {
-  const bad = row({ pin: 'yes' });
-  assert.ok(validateRows([bad], taxonomy).errors.some((e) => e.includes('pin')));
-
-  const off = row({ pin: false });
-  assert.deepEqual(validateRows([off], taxonomy).errors, []);
-  assert.equal(dumpLinks([off], '').includes('pin'), false);
-});
-
-test('diffRowDetails: 只改 pin 算修改，不算增删', () => {
-  const before = [row()];
-  const after = [row({ pin: true })];
-  const detail = diffRowDetails(before, after);
-  assert.equal(detail.added.length, 0);
-  assert.equal(detail.removed.length, 0);
-  assert.equal(detail.changed.length, 1);
-  assert.deepEqual(diffRows(before, after), { added: 0, removed: 0, changed: 1 });
+test('pin 已下线：写回 YAML 不再带这个字段，残留的 pin 会被校验拦下', () => {
+  assert.equal(dumpLinks([row()], '').includes('pin'), false);
+  const stale = row({ pin: true });
+  assert.ok(validateRows([stale], taxonomy).errors.some((e) => e.includes('pin')));
 });

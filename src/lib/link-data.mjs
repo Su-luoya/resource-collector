@@ -6,7 +6,7 @@
 // 否则 `node scripts/validate.mjs` 会挂。
 import { parse } from 'yaml';
 
-const FIELDS = ['title', 'url', 'section', 'facets', 'desc', 'added', 'pin', 'note', 'read'];
+const FIELDS = ['title', 'url', 'section', 'facets', 'desc', 'added', 'note', 'read'];
 
 /** 双引号标量：与仓库现有写法一致（title/desc 带引号，url/section/added 不带） */
 const q = JSON.stringify;
@@ -59,9 +59,7 @@ const dumpOne = (r) =>
     ...dumpFacets(r.facets),
     `  desc: ${q(r.desc)}`,
     `  added: ${r.added}`,
-    // 只有置顶才写这一行：不加字段的数据与以前逐字一致，diff 不会无限长
-    ...(r.pin === true ? ['  pin: true'] : []),
-    // 同理，只有待看才写 read: false；没标记的条目保持原样
+    // 只有待看才写 read: false；没标记的条目保持原样
     ...(r.read === false ? ['  read: false'] : []),
     ...dumpNote(r.note),
   ].join('\n') + '\n';
@@ -127,9 +125,6 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
       if (k === 'type' || k === 'topics') err(`${at}.${k} 已废弃，改用 section + facets`);
       else if (!FIELDS.includes(k)) err(`${at}.${k} 未登记，编辑器不能写回此字段`);
     }
-
-    // 置顶是可选的布尔；写 false 没意义，但不算错（手写 YAML 时容易残留）
-    if (l.pin !== undefined && typeof l.pin !== 'boolean') err(`${at}.pin 必须是 true / false`);
 
     // 待看标记：只有 read: false 有意义，其余一律当作未标记
     if (l.read !== undefined && typeof l.read !== 'boolean') err(`${at}.read 必须是 true / false`);

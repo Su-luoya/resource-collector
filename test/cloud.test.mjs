@@ -9,7 +9,6 @@ const link = {
   facets: { tools: { kind: 'service' } },
   desc: '算样本量与功效',
   added: '2025-02-01',
-  pin: true,
   note: '- 用过一次',
   read: false,
 };
@@ -17,30 +16,29 @@ const link = {
 test('toRow 把内部表示摊平成库里的列', () => {
   const row = toRow(link);
   assert.equal(row.desc, '算样本量与功效');
-  assert.equal(row.pin, true);
+  assert.equal('pin' in row, false, '置顶已下线，库里不再有这一列');
   assert.equal(row.note, '- 用过一次');
   assert.equal(row.unread, true, 'read: false 要变成 unread: true');
   assert.notEqual(row.section, link.section, '数组要复制，不能和内部对象共用引用');
 });
 
-test('toRow 不写多余字段：没有 pin 就是 false，空笔记要显式 null', () => {
-  const { note, pin, ...rest } = toRow({ ...link, pin: undefined, note: '   ', read: true });
+test('toRow 不写多余字段：空笔记要显式 null', () => {
+  const { note, ...rest } = toRow({ ...link, note: '   ', read: true });
   // null 而不是省掉键：合并更新时缺键不会清掉库里已有的笔记
   assert.equal(note, null);
-  assert.equal(pin, false);
   assert.equal(rest.unread, false);
 });
 
 test('fromRow 只在有意义时带出可选字段', () => {
   const plain = fromRow({ url: 'https://a.b', title: 'A', section: ['tools'], facets: {}, desc: 'd', added: '2025-01-02T03:04:05Z' });
   assert.equal(plain.added, '2025-01-02', '带时间的时间戳要截成日期');
-  assert.equal('pin' in plain, false);
+  assert.equal('pin' in plain, false, '老库里残留的 pin 列不该回到内部对象');
   assert.equal('note' in plain, false);
   assert.equal('read' in plain, false);
 
   const full = fromRow({ url: link.url, title: link.title, section: link.section, facets: link.facets, desc: link.desc, added: '2025-02-01', pin: true, note: 'x', unread: true });
   assert.equal(full.read, false);
-  assert.equal(full.pin, true);
+  assert.equal('pin' in full, false, '置顶字段被忽略');
   assert.equal(full.note, 'x');
 });
 

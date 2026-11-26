@@ -1,7 +1,7 @@
 /**
  * 云端行 ↔ 内部资源对象的互相转换，以及 Supabase REST 的最小封装。
  *
- * 内部表示沿用 YAML 时代的样子（section 数组、facets 嵌套、缺省就没有的 pin/note/read），
+ * 内部表示沿用 YAML 时代的样子（section 数组、facets 嵌套、缺省就没有的 note/read），
  * 这样页面、校验、编辑层全都不用改。只有两个字段名不一样：
  *   - 库里 `unread` 是正着说的布尔列，内部沿用 `read: false` 表示待看
  *   - 库里 `desc` 是保留字冲突列（建表时加了引号），内部仍是 desc
@@ -18,7 +18,6 @@ export const toRow = (link) => {
     facets: link.facets && typeof link.facets === 'object' ? link.facets : {},
     desc: link.desc,
     added: link.added,
-    pin: link.pin === true,
     unread: link.read === false,
     // 必须显式给 null：缺键的合并更新不会把旧笔记清掉
     note: typeof link.note === 'string' && link.note.trim() ? link.note : null,
@@ -36,7 +35,6 @@ export const fromRow = (row) => {
     desc: row.desc,
     added: typeof row.added === 'string' ? row.added.slice(0, 10) : String(row.added ?? '').slice(0, 10),
   };
-  if (row.pin === true) link.pin = true;
   if (typeof row.note === 'string' && row.note.trim()) link.note = row.note;
   if (row.unread === true) link.read = false;
   return link;

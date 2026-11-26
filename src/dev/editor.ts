@@ -130,8 +130,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const pageSection = host.dataset.section || '';
 
   let editing: string | null = null;
-  /** 编辑期间星标状态：currentDraft 要把它带回写盘，否则保存一次就丢置顶 */
-  let editingPin = false;
   let qualitySeq = 0;
   let aiSeq = 0;
   let batchActive = false;
@@ -224,7 +222,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       facets,
       desc: card.querySelector('.desc')?.textContent?.trim() ?? '',
       added: el.dataset.added ?? '',
-      ...(el.dataset.pin === '1' ? { pin: true } : {}),
       ...(el.dataset.read === '1' ? { read: false } : {}),
       ...(el.dataset.noteText ? { note: el.dataset.noteText } : {}),
     };
@@ -401,43 +398,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     offerUndo(pending.rows, { at: pending.at, timeout: left });
   };
 
-  /** 置顶开关：只改 pin，不动其他字段。星标先翻、失败再翻回来，别让人盯着没反应的星星 */
-  async function togglePin(card: HTMLElement, star: HTMLButtonElement) {
-    const row = rowOf(card);
-    const next = card.dataset.pin !== '1';
-    const paint = (on: boolean) => {
-      card.dataset.pin = on ? '1' : '';
-      star.textContent = on ? '★' : '☆';
-      star.classList.toggle('on', on);
-      star.title = on ? '取消置顶' : '置顶（浏览时排在最前）';
-      star.setAttribute('aria-pressed', on ? 'true' : 'false');
-    };
-    paint(next);
-    // 浏览时置顶优先：让 filter.ts 立刻把卡片搬到该在的位置
-    document.dispatchEvent(new CustomEvent('dev:cards-changed'));
-    star.disabled = true;
-    say(next ? `正在置顶「${row.title}」…` : `正在取消置顶「${row.title}」…`, 'dirty');
-    const res = await send('edit', {
-      action: 'update',
-      ...row,
-      pin: next,
-      newUrl: row.url,
-    });
-    star.disabled = false;
-    if (!res.ok) {
-      paint(!next);
-      document.dispatchEvent(new CustomEvent('dev:cards-changed'));
-      say(res.message || '置顶失败', 'bad');
-      toast(res.errors?.length ? res.errors.join('；') : res.message || '置顶失败', { tone: 'bad' });
-      return;
-    }
-    const text = next ? `已置顶：${row.title}` : `已取消置顶：${row.title}`;
-    say(text);
-    // 写缓存会让 Vite 整页重载，提示存进 sessionStorage，重载后再弹
-    flash(text, 'ok');
-    refresh();
-  }
-
   for (const card of cardEls) {
     const box = document.createElement('span');
     box.className = 'dev-card-actions';
@@ -468,21 +428,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
 
     box.append(edit, del);
     card.append(box);
-
-    // 置顶星标：立即写盘。星标先翻、失败翻回去，刷页时也已经是对的状态。
-    const pinned = card.dataset.pin === '1';
-    const star = document.createElement('button');
-    star.type = 'button';
-    star.className = `dev-star${pinned ? ' on' : ''}`;
-    star.textContent = pinned ? '★' : '☆';
-    star.title = pinned ? '取消置顶' : '置顶（浏览时排在最前）';
-    star.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-    star.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void togglePin(card, star);
-    });
-    box.prepend(star);
 
     const pick = document.createElement('input');
     pick.type = 'checkbox';
@@ -517,7 +462,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     url: url.value.trim(),
     desc: desc.value,
     added: added.value,
-    ...(editingPin ? { pin: true } : {}),
     ...(readBox.checked ? { read: false } : {}),
     ...(note.value.trim() ? { note: note.value.trim() } : {}),
     section: sectionBoxes.filter((box) => box.checked).map((box) => box.value),
@@ -603,7 +547,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       return;
     }
     editing = isDraft ? null : row?.url ?? null;
-    editingPin = !isDraft && row?.pin === true;
     heading.textContent = isDraft ? `批量导入 · ${batchIndex + 1}/${batchDrafts.length}` : row ? '编辑资源' : '新增资源';
     url.value = suggestedUrl ?? row?.url ?? '';
     title.value = row?.title ?? '';

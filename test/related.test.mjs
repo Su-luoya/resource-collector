@@ -46,9 +46,9 @@ test('相关度：同站点优先，其次共享分类，无关条目不出现',
   assert.deepEqual(relatedFor(target, rows, 1).map((r) => r.title), ['同站点']);
 });
 
-test('分区内上下条按时间排，置顶不参与', () => {
+test('分区内上下条按时间排', () => {
   const rows = [
-    link('https://a.com/1', { title: '新', added: '2026-03-01', pin: true }),
+    link('https://a.com/1', { title: '新', added: '2026-03-01' }),
     link('https://a.com/2', { title: '中', added: '2026-02-01' }),
     link('https://a.com/3', { title: '旧', added: '2026-01-01' }),
     link('https://b.com/1', { title: '别区', section: ['tools'], added: '2026-04-01' }),

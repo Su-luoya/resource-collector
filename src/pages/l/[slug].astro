@@ -30,7 +30,6 @@ const note = l.note ? renderNote(l.note) : '';
 const meta = [
   l.added ? `收录于 ${l.added}` : '',
   l.read === false ? '待看' : '',
-  l.pin ? '置顶' : '',
 ].filter(Boolean).join(' · ');
 
 // warn 只是「要登录/拒绝抓取」，不能写成打不开

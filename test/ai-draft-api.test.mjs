@@ -85,7 +85,7 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
   writeFileSync('public/icons/.gitkeep', '');
   const cloud = await startFakeCloud({
     links: [
-      { url: 'https://a.example.com', title: 'A', section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: 'A', added: '2026-01-01', pin: false, unread: false },
+      { url: 'https://a.example.com', title: 'A', section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: 'A', added: '2026-01-01', unread: false },
     ],
   });
   cloud.use();

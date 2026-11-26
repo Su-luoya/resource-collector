@@ -14,7 +14,6 @@
        scholar: { field: [asset] } # field 多选；data/finance 用 kind/topic，metrics/ml 用 kind/lang，tools/writing/skill/lit 用 kind
      desc: "一句中文简介，≤120 字，说清「是什么 + 有什么用」"
      added: YYYY-MM-DD             # 当天日期
-     pin: true                     # 可选：置顶（浏览时排最前；搜索时不参与排序）
      read: false                   # 可选：待看。数据里没这个字段就是「已看过」
      note: |                       # 可选：详情页里的笔记，Markdown 子集（段落/列表/粗体/行内代码/链接）
        - 为什么收它
@@ -30,7 +29,7 @@
 - **按分面分类归类**，不要层叠：先定 `section`（进哪几页，可多值——tidy-finance 既是数据处理代码又是包，就 `[data, metrics]`），再写该分区的 `facets`。分区按主题切分（计量实证 / 机器学习 / 金融与宏观 / 文献搜索 / 数据 / 工具 / 写作与汇报 / agent skill / 学者主页，平级），判断优先级是「资源主体是什么」，不是「页面长得像什么」——一个包的官方文档站算它所属主题页的 `pkg`，讲怎么用它才是 `doc`；金融宏观的数据双挂到 `finance`。
 - 不新建分区或分类：先改 `src/data/taxonomy.json` 的 `sections`（id + label + hint + badge + facets），再加到数据里，否则 `npm run check` 与构建都报错。分区页路由由它生成，加第 10 块不用写新页面。
 - 学者页的 `field` 判不出来就留 `[]`，不要为了填满而编造研究方向。
-- 置顶与「最近 7 天」只是浏览层的视图，不新增分区、不改卡片结构；置顶靠 `pin: true` 一个字段，`added` 仍是收录日期（不改成「最后修改」）。
+- 「最近 7 天」只是浏览层的视图，不新增分区、不改卡片结构；`added` 是收录日期（不改成「最后修改」）。置顶功能已下线（`pin` 字段整体移除），不要再加回来。
 - 详情页地址由 URL 派生（`src/lib/slug.mjs` 的 `slugMap`），YAML 里**不存 slug 字段**：改 URL 就等于换地址，同一个地址永远得到同一个 slug（撞车按 URL 排序补 `-2`，与行序无关）。
 - 笔记 `note` 只渲染 Markdown 子集，渲染前先转义 HTML、链接只认 http(s)；不要为了排版去引 markdown 库或写 HTML。
 - 采集/一键收录只调 `api/meta`（响应里带 `rules` 落点建议），建议来自 `src/lib/link-rules.mjs` 的域名规则表（命中才给分区与分类，认不出就是空）；「落点建议」不能猜。
@@ -46,8 +45,8 @@
 - `supabase/schema.sql` — 表结构（links / link_status / icons + RLS：宓名只读，写只走 secret key）
 - `src/lib/cloud.mjs` / `cloud-sync.mjs` — 行 ↔ 内部对象的转换、PostgREST 封装、`.cache/links.json` 的拉取与写入
 - `src/data/taxonomy.json` — 分区与分类词表：`sections`（分区 → 各自的 facets 轴与取值，`badge` 指定卡片徽标用哪条轴）
-- `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序（转出 `compareNewest`/`comparePinned`）、搜索文本、图标表读取
-- `src/lib/ordering.mjs` — 卡片排序规则：置顶优先 + 时间倒序、同日期按标题；浏览页与 `filter.ts` 的卡片重排共用同一份实现
+- `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序（转出 `compareNewest`）、搜索文本、图标表读取
+- `src/lib/ordering.mjs` — 卡片排序规则：时间倒序、同日期按标题；浏览页与 `filter.ts` 的卡片重排共用同一份实现
 - `src/components/Catalog.astro` — 首页与分区页共用的页面骨架（导航 / chips / 卡片墙 / dev 表单）
 - `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 9 个分区页（路由由 taxonomy 生成）
 - `src/client/filter.ts` — 客户端筛选：轴从 chip 的 `data-facet` 读，首页只有 section 一条轴；还负责卡片重排、搜索高亮、最近 7 天开关、待看开关

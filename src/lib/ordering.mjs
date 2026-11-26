@@ -13,14 +13,5 @@ export const compareNewest = (a, b) => {
   return byTitle(a, b);
 };
 
-/** 置顶优先，其余同 compareNewest */
-export const comparePinned = (a, b) => {
-  const pin = a.pin === true ? 0 : 1;
-  const other = b.pin === true ? 0 : 1;
-  if (pin !== other) return pin - other;
-  return compareNewest(a, b);
-};
-
-/** 不改原数组；`pinned: false` 用于搜索时按时间序排（置顶不该挡住搜索结果） */
-export const sortLinks = (rows, { pinned = true } = {}) =>
-  [...rows].sort(pinned ? comparePinned : compareNewest);
+/** 不改原数组 */
+export const sortLinks = (rows) => [...rows].sort(compareNewest);

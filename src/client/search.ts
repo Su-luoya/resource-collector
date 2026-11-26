@@ -8,11 +8,11 @@ export type ParsedQuery = {
   unknownFlags: string[];
 };
 
-const KNOWN_FLAGS = new Set(['pinned', 'unread', 'read', 'note', 'fail', 'warn']);
+const KNOWN_FLAGS = new Set(['unread', 'read', 'note', 'fail', 'warn']);
 
 /**
  * 把搜索串拆成「前缀行 + 自由词」。
- * 支持 `#分区`、`domain:xxx`、`is:pinned|unread|read|note|fail|warn`；其余照旧当自由词做 AND。
+ * 支持 `#分区`、`domain:xxx`、`is:unread|read|note|fail|warn`；其余照旧当自由词做 AND。
  * 同一类前缀之间取并集，不同类之间取交集——和左侧 chips 的语义保持一致。
  */
 export function parseQuery(query: string): ParsedQuery {
@@ -52,7 +52,6 @@ export type QueryTarget = {
   haystack: string;
   sections: string[];
   host: string;
-  pinned: boolean;
   unread: boolean;
   hasNote: boolean;
   /** 最近一次体检结果：ok / redirect / warn / fail，没有记录是空串 */
@@ -63,7 +62,6 @@ export const matchesQuery = (parsed: ParsedQuery, target: QueryTarget): boolean 
   if (parsed.sections.length && !parsed.sections.some((id) => target.sections.includes(id))) return false;
   if (parsed.domains.length && !parsed.domains.some((d) => target.host.includes(d))) return false;
   for (const flag of parsed.flags) {
-    if (flag === 'pinned' && !target.pinned) return false;
     if (flag === 'unread' && !target.unread) return false;
     if (flag === 'read' && target.unread) return false;
     if (flag === 'note' && !target.hasNote) return false;

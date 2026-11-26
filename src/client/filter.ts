@@ -7,7 +7,7 @@
 
 import { markdownItem } from './markdown';
 import { highlightPattern, highlightPieces, matchesQuery, parseQuery } from './search';
-import { compareNewest, comparePinned } from '../lib/ordering.mjs';
+import { compareNewest } from '../lib/ordering.mjs';
 
 const cards = Array.from(document.querySelectorAll<HTMLAnchorElement>('.card'));
 /** dev 里删/加卡片不刷页：每次重算都从 DOM 现取，别抱一份加载时的快照（否则删掉的卡会被 apply 重新算回计数） */
@@ -90,15 +90,15 @@ function paint(pattern: RegExp | null) {
 }
 
 /**
- * 排序：空闲时置顶优先，搜索时只用时间序（置顶不该挡住搜索结果）。
- * 每次从原始数组重算，避免反复重排后顺序漂移。
+ * 排序：时间序（新的在前，同日期按标题）。
+ * 每次都从 DOM 现取卡片重算，避免反复重排后顺序漂移。
  */
-function reorder(idle: boolean) {
+function reorder() {
   if (!grid) return;
   const ordered = [...liveCards()].sort((a, b) => {
-    const left = { pin: a.dataset.pin === '1', added: a.dataset.added || '', title: hlText.get(a.querySelector<HTMLElement>('h2')!) || '' };
-    const right = { pin: b.dataset.pin === '1', added: b.dataset.added || '', title: hlText.get(b.querySelector<HTMLElement>('h2')!) || '' };
-    return idle ? comparePinned(left, right) : compareNewest(left, right);
+    const left = { added: a.dataset.added || '', title: hlText.get(a.querySelector<HTMLElement>('h2')!) || '' };
+    const right = { added: b.dataset.added || '', title: hlText.get(b.querySelector<HTMLElement>('h2')!) || '' };
+    return compareNewest(left, right);
   });
   // 已经排好了就不动 DOM：比较对象是网格里现在的顺序，不是加载时那份静态数组
   if (ordered.every((card, index) => grid.children[index] === slotOf(card))) return;
@@ -141,7 +141,6 @@ function apply() {
       haystack: card.dataset.search || '',
       sections: (card.dataset.section || '').split(' ').filter(Boolean),
       host: card.dataset.host || '',
-      pinned: card.dataset.pin === '1',
       unread: card.dataset.read === '1',
       hasNote: card.dataset.note === '1',
       status: card.dataset.status || '',
@@ -157,7 +156,7 @@ function apply() {
     if (show) n++;
   }
 
-  reorder(q === '');
+  reorder();
   paint(highlightPattern(parsed.text));
 
   shown.textContent = String(n);
@@ -181,7 +180,7 @@ function apply() {
   const notes: string[] = [];
   if (active.some((axis) => picked[axis].size > 1)) notes.push('同一行内取并集');
   if (active.length > 1) notes.push('不同行取交集');
-  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:pinned / is:unread / is:read / is:note / is:fail / is:warn`);
+  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:unread / is:read / is:note / is:fail / is:warn`);
   hint.textContent = notes.length ? `（${notes.join('，')}）` : '';
 
   for (const chip of chips) {

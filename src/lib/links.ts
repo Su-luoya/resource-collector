@@ -34,8 +34,6 @@ export type Resource = {
   facets: Record<string, Record<string, string | string[]>>;
   desc: string;
   added: string;
-  /** 置顶：浏览时排在前面，搜索时不参与排序 */
-  pin?: boolean;
   /** 可选笔记（Markdown 子集）：为什么收它、关键结论；只在详情页渲染 */
   note?: string;
   /** 待看：只有 read: false 才写进数据，没有这个字段就是「已看过」 */

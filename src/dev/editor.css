@@ -999,17 +999,6 @@ body.dev-bar-open main {
   white-space: nowrap;
 }
 
-/* ---- 置顶星标 ---- */
-.dev-card-actions button.dev-star {
-  padding: 3px 6px;
-  font-size: 13px;
-}
-
-.dev-card-actions button.dev-star.on {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-}
-
 /* ---- 全库查重 ---- */
 .dev-scan,
 .dev-scan-list {
