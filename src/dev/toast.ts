@@ -3,7 +3,7 @@
  * 只在 dev 编辑层使用，不进构建产物。
  */
 
-export type ToastTone = 'ok' | 'bad' | 'warn' | 'info';
+export type ToastTone = 'ok' | 'bad' | 'warn' | 'info' | 'busy';
 
 export type ToastOptions = {
   tone?: ToastTone;
@@ -14,7 +14,8 @@ export type ToastOptions = {
   action?: { label: string; run: () => void | Promise<void> };
 };
 
-const TONE_MARK: Record<ToastTone, string> = { ok: '✓', bad: '✕', warn: '!', info: 'i' };
+/** busy 的标记是个转圈，内容由 CSS 画，这里留空 */
+const TONE_MARK: Record<ToastTone, string> = { ok: '✓', bad: '✕', warn: '!', info: 'i', busy: '' };
 const MAX_TOASTS = 4;
 const MAX_HISTORY = 30;
 

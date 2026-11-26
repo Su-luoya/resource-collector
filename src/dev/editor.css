@@ -694,6 +694,34 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* 等写库时的卡片态：点下去立刻说「在删」，别让用户猜是点漏了还是卡死了 */
+.card.is-busy {
+  position: relative;
+  pointer-events: none;
+}
+
+.card.is-busy > * {
+  opacity: 0.35;
+}
+
+.card.is-busy::after {
+  content: attr(data-busy-label);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: 5px 12px;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transform: translate(-50%, -50%);
+  animation: dev-busy-pulse 1.1s ease-in-out infinite;
+}
+
 .dev-selectbar {
   position: fixed;
   /* Astro 的 dev 工具条已在 astro.config.mjs 关掉，底部空出来，浮条贴着底边走 */
@@ -797,6 +825,33 @@ body.dev-bar-open main {
 
 .dev-toast.is-warn {
   border-left-color: var(--warn);
+}
+
+/* 进行中：左边框着中性色，左边的标记是个转圈，跟「做完了」区分开 */
+.dev-toast.is-busy {
+  border-left-color: var(--line-strong);
+}
+
+.dev-toast.is-busy .dev-toast-mark {
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 2px solid color-mix(in srgb, var(--fg-muted) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: dev-spin 0.7s linear infinite;
+}
+
+@keyframes dev-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dev-busy-pulse {
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .dev-toast.is-leaving {

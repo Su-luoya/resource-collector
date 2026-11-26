@@ -296,10 +296,35 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const dropCard = (targetUrl: string) => {
     const card = cardEls.find((item) => (item.getAttribute('href') ?? '') === targetUrl);
     if (!card) return;
-    card.remove();
+    // 卡片外面还包着一层 .card-slot（给「详情」链接留位置），连带它一起去掉，否则留下一个空格子
+    (card.closest('.card-slot') ?? card).remove();
     const shownEl = document.getElementById('shown');
     const count = Number(shownEl?.textContent ?? '');
     if (shownEl && Number.isFinite(count)) shownEl.textContent = String(Math.max(0, count - 1));
+  };
+
+  /** 写库要往返一次 Supabase（通常 0.5–2 秒）。这段时间卡片必须自己说「正在写」，
+   *  否则用户分不清是点漏了、卡住了，还是真的在等。 */
+  const setCardBusy = (targetUrl: string, on: boolean, label = '删除中…') => {
+    const card = cardEls.find((item) => (item.getAttribute('href') ?? '') === targetUrl);
+    if (!card) return;
+    card.classList.toggle('is-busy', on);
+    card.dataset.busyLabel = label;
+    if (on) card.setAttribute('aria-busy', 'true');
+    else card.removeAttribute('aria-busy');
+    for (const el of card.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')) el.disabled = on;
+  };
+
+  /** 常驻的「正在做」提示，操作结束后由调用方关掉 */
+  const busyToast = (text: string, detail?: string) => toast(text, { tone: 'busy', timeout: 0, detail });
+
+  /** 网络请求本身没有超时，卡死时要自己给出终止条件，否则忙碌态会一直挂着 */
+  const withTimeout = <T>(task: Promise<T>, ms: number, onTimeout: () => T): Promise<T> => {
+    let timer = 0;
+    const slow = new Promise<T>((resolve) => {
+      timer = window.setTimeout(() => resolve(onTimeout()), ms);
+    });
+    return Promise.race([task, slow]).finally(() => window.clearTimeout(timer));
   };
 
   /** 删除后写盘会让 Vite 整页重载（实测 <150ms），Toast 会跟着文档一起没。
@@ -549,6 +574,9 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     fillFacets(row);
     syncPanels();
     deleteBtn.hidden = isDraft || !row;
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = '删除';
+    deleteBtn.title = '删除这一条';
     batchDiscardBtn.hidden = !isDraft;
     cancelBtn.textContent = isDraft ? '暂停' : '取消';
     saveBtn.disabled = false;
@@ -707,10 +735,36 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       toast('请先完成或放弃当前批量导入，再删除其他资源。', { tone: 'bad' });
       return;
     }
-    const res = await send('edit', { action: 'delete', url: targetUrl });
+    // 写库期间卡片已是 is-busy，连点会被这里挡住，不会重复提交
+    if (cardEls.find((item) => (item.getAttribute('href') ?? '') === targetUrl)?.classList.contains('is-busy')) return;
+
+    const label = name ? `「${name}」` : '这条';
+    setCardBusy(targetUrl, true, '删除中…');
+    // 从编辑弹窗里删时，卡片被弹窗盖着，忙碌态看不到：暂停按钮自己说话
+    const inDialog = dlg.open && editing === targetUrl;
+    if (inDialog) {
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = '删除中…';
+    }
+    say(`正在删除${label}…`, 'dirty');
+    const stopPending = busyToast(`正在删除${label}`, '写库通常一两秒，删完可以撤销');
+
+    const res = await withTimeout(
+      send('edit', { action: 'delete', url: targetUrl }),
+      25_000,
+      () => ({ ok: false, message: '删除请求 25 秒没回应：可能已经写进库了，刷新页面对一下' }) as ApiReply,
+    );
+    stopPending();
+
+    if (inDialog) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = '删除';
+    }
+
     if (!res.ok) {
+      setCardBusy(targetUrl, false);
       say(res.message || '删除失败', 'bad');
-      toast(res.message || '删除失败', { tone: 'bad' });
+      toast(`没删掉${label}`, { tone: 'bad', detail: res.message || '删除失败' });
       return;
     }
     dlg.close();
@@ -1447,11 +1501,15 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const entries = [...pickedRows.values()];
     if (!entries.length) return;
     selectDelete.disabled = true;
+    const stopPending = busyToast(`正在删除 ${entries.length} 条…`, '逐条写库，删完可以撤销');
     const removed: Row[] = [];
     try {
       for (const entry of entries) {
+        setCardBusy(entry.row.url, true, '删除中…');
+        say(`正在删除第 ${removed.length + 1}/${entries.length} 条…`, 'dirty');
         const res = await send('edit', { action: 'delete', url: entry.row.url });
         if (!res.ok) {
+          setCardBusy(entry.row.url, false);
           toast(`删除「${entry.row.title}」失败`, { tone: 'bad', detail: res.message });
           break;
         }
@@ -1461,6 +1519,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
         say(`已删除 ${removed.length}/${entries.length}`);
       }
     } finally {
+      stopPending();
       selectDelete.disabled = false;
       syncSelectBar();
     }
