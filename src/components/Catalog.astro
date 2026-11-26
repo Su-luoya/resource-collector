@@ -62,7 +62,8 @@ const rows = unread
   ? [...facetRows, { id: 'read', label: '状态', hint: '只在本地标记，不影响他人', values: [{ id: 'unread', label: '待看', count: unread }] }]
   : facetRows;
 
-/** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉 */
+/** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉。
+ *  data-facets / data-note-text 只有 dev 编辑层读（笔记的正文已经进了 data-search），线上不输出。 */
 const DEV = import.meta.env.DEV;
 const title = heading === '资源库' ? '资源库' : `${heading} · 资源库`;
 const description = `${heading}：${total} 条资源${hint ? `（${hint}）` : ''}，可搜索与按分类筛选。`;
@@ -208,14 +209,13 @@ const rssHref = `${base}rss.xml`;
             rel="noopener noreferrer"
             {...attrs}
             data-section={l.section.join(' ')}
-            data-facets={JSON.stringify(l.facets)}
             data-search={searchText(l)}
             data-added={l.added}
             data-host={host}
             data-read={l.read === false ? '1' : ''}
             data-note={l.note ? '1' : ''}
-            data-note-text={l.note ?? ''}
             data-status={st?.status ?? ''}
+            {...(DEV ? { 'data-facets': JSON.stringify(l.facets), 'data-note-text': l.note ?? '' } : {})}
           >
             <span class="card-top">
               <span class="fav">
