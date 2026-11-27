@@ -10,3 +10,6 @@ raw/
 .cache/
 .env
 .env.*
+
+# pi 的本地 skills 检出，不入库
+.pi/
