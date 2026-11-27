@@ -91,6 +91,39 @@
       ]
     },
     {
+      "id": "invest",
+      "label": "投资与理财",
+      "hint": "钱放出去直接能用上的东西：行情与申赎限额、基金与 ETF 筛选、回测与组合工具、理财计算器",
+      "badge": "kind",
+      "facets": [
+        {
+          "id": "kind",
+          "label": "形态",
+          "hint": "是网页上能查能算的工具、能下的行情，还是能跑的库与教程",
+          "values": [
+            { "id": "tool", "label": "在线工具" },
+            { "id": "data", "label": "行情与数据" },
+            { "id": "lib", "label": "库与框架" },
+            { "id": "doc", "label": "教程与书" },
+            { "id": "service", "label": "平台与服务" }
+          ]
+        },
+        {
+          "id": "market",
+          "label": "品种",
+          "hint": "这个工具或数据管哪个市场；跨市场的多选",
+          "multi": true,
+          "values": [
+            { "id": "fund", "label": "基金与 ETF" },
+            { "id": "stock", "label": "股票" },
+            { "id": "bond", "label": "债券与固收" },
+            { "id": "deriv", "label": "衍生品" },
+            { "id": "overseas", "label": "跨境与海外" }
+          ]
+        }
+      ]
+    },
+    {
       "id": "lit",
       "label": "文献搜索",
       "hint": "论文检索入口、每日论文流与顶刊动态",
