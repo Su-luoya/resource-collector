@@ -316,14 +316,68 @@ document.addEventListener('keydown', (event) => {
 });
 
 // ---- 主题 ----
-themeBtn.addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
-  try {
-    localStorage.setItem('theme', next);
-  } catch {
-    /* 隐私模式下写不进去，忽略 */
+// 值写 'auto' 时不落 localStorage，回到跟随系统。
+const themeMenu = document.getElementById('theme-menu') as HTMLElement;
+const themeOpts = Array.from(themeMenu.querySelectorAll<HTMLButtonElement>('[data-theme-value]'));
+const prefersDark = matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme(value: string) {
+  const resolved = value === 'auto' ? (prefersDark.matches ? 'dark' : 'light') : value;
+  document.documentElement.dataset.theme = resolved;
+  for (const opt of themeOpts) {
+    const on = opt.dataset.themeValue === value;
+    opt.classList.toggle('is-active', on);
+    if (on) opt.setAttribute('aria-current', 'true');
+    else opt.removeAttribute('aria-current');
   }
+}
+
+function setThemeMenu(open: boolean) {
+  themeMenu.hidden = !open;
+  themeBtn.setAttribute('aria-expanded', String(open));
+}
+
+let savedTheme = 'auto';
+try {
+  const stored = localStorage.getItem('theme');
+  // 停在 localStorage 里的旧主题名不再存在于菜单里，就当没选。
+  savedTheme = themeOpts.some((opt) => opt.dataset.themeValue === stored) ? stored! : 'auto';
+} catch {
+  /* 隐私模式读不到，按跟随系统来 */
+}
+applyTheme(savedTheme);
+
+themeBtn.addEventListener('click', () => setThemeMenu(themeMenu.hidden));
+
+themeMenu.addEventListener('click', (event) => {
+  const opt = (event.target as Element).closest<HTMLButtonElement>('[data-theme-value]');
+  const value = opt?.dataset.themeValue;
+  if (!value) return;
+  savedTheme = value;
+  applyTheme(value);
+  try {
+    if (value === 'auto') localStorage.removeItem('theme');
+    else localStorage.setItem('theme', value);
+  } catch {
+    /* 写不进去就只在本次生效 */
+  }
+  // 收起菜单会把焦点连按钮一起藏掉，交回触发按钮，键盘用户不用从头 Tab。
+  themeBtn.focus();
+  setThemeMenu(false);
+});
+
+document.addEventListener('click', (event) => {
+  if (themeMenu.hidden || (event.target as Element).closest('.theme-picker')) return;
+  setThemeMenu(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !themeMenu.hidden) setThemeMenu(false);
+});
+
+// 跟随系统的用户，系统切明暗时立刻跟上，不用刷新。
+prefersDark.addEventListener('change', () => {
+  if (savedTheme === 'auto') applyTheme('auto');
 });
 
 // dev 编辑层删/改了卡片就喊一声：数字与排序跟着重算，不用整页刷新。

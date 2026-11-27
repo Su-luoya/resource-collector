@@ -3,6 +3,7 @@
 // 页面只负责算出「这一页有哪些卡片、哪些轴」，markup 不重复写两遍。
 import Base from '../layouts/Base.astro';
 import { base } from '../lib/site';
+import { THEMES } from '../lib/theme.mjs';
 import {
   SECTIONS,
   hostOf,
@@ -95,11 +96,46 @@ const rssHref = `${base}rss.xml`;
       <kbd>/</kbd>
     </div>
 
-    <button class="icon-btn" id="theme" type="button" title="切换深浅色" aria-label="切换深浅色">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"></path>
-      </svg>
-    </button>
+    <div class="theme-picker">
+      <button
+        class="icon-btn"
+        id="theme"
+        type="button"
+        title="切换配色"
+        aria-label="切换配色"
+        aria-expanded="false"
+        aria-controls="theme-menu"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"></path>
+        </svg>
+      </button>
+      <div class="theme-menu" id="theme-menu" hidden>
+        {
+          THEMES.map((theme) => (
+            <button
+              class="theme-opt"
+              type="button"
+              data-theme-value={theme.id}
+              title={theme.label}
+              aria-label={theme.label}
+            >
+              {theme.id === 'auto' ? (
+                <span class="theme-tile theme-tile-auto">
+                  <span class="theme-chip" data-theme="light" />
+                  <span class="theme-chip" data-theme="dark" />
+                  {theme.label}
+                </span>
+              ) : (
+                <span class="theme-tile" data-theme={theme.id}>
+                  {theme.label}
+                </span>
+              )}
+            </button>
+          ))
+        }
+      </div>
+    </div>
   </div>
 </header>
 

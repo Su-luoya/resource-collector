@@ -42,6 +42,7 @@
 - 长任务一律走任务表：`api/publish` / `api/batch-meta` 立即返回 `{ ok, id }`，进度靠 `GET api/task?id=` 轮询快照（步骤 + `progress` + `log`）。不要改回阻塞式等待——前端进度条只认这个契约。
 ## 关键文件
 
+- `src/lib/theme.mjs` — 配色主题清单（16 项：跟随系统 + 15 套，其中 light/dark 是站点原始青绿配色、默认用它俩，其余 13 套色板取自 pi-web），与 `src/styles/global.css` 的 `[data-theme]` 块一一对应，`test/theme.test.mjs` 守着两边不漂
 - `supabase/schema.sql` — 表结构（links / link_status / icons + RLS：宓名只读，写只走 secret key）
 - `src/lib/cloud.mjs` / `cloud-sync.mjs` — 行 ↔ 内部对象的转换、PostgREST 封装、`.cache/links.json` 的拉取与写入
 - `src/data/taxonomy.json` — 分区与分类词表：`sections`（分区 → 各自的 facets 轴与取值，`badge` 指定卡片徽标用哪条轴）

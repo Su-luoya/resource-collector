@@ -1,3 +1,12 @@
+/* 配色主题：一套主题就是一个 [data-theme] 块，id 与 src/lib/theme.mjs 一一对应，
+   test/theme.test.mjs 守着两边顺序不漂。
+   最前面的 :root 与 light 是站点第一版的原始配色（青绿），默认就它；
+   其余 13 套取自 pi-web（github.com/agegr/pi-web/app/globals.css）。
+   pi-web 只有 7 个颜色，本站多出来的 --line-strong / --accent-soft / --warn* /
+   --fail* / --shadow 在 :root 里按明暗派生，主题块不写就继承。
+   加一套：global.css 加一块 [data-theme]，src/lib/theme.mjs 加一项。 */
+
+/* 默认 = 原始浅色，也兜住 JS 没跑起来的情况 */
 :root {
   color-scheme: light;
   --bg: #f4f6f5;
@@ -6,18 +15,87 @@
   --fg: #18221e;
   --fg-muted: #64716b;
   --line: #dde4e0;
-  --line-strong: #c5d0ca;
   --accent: #176b52;
+  --radius: 12px;
+  --font-display: ui-serif, 'Songti SC', 'STSong', 'Noto Serif CJK SC', serif;
+
+  /* 派生值：主题块没写就用这里，--warn / --fail 由 color-scheme 决定明暗档 */
+  --line-strong: color-mix(in srgb, var(--line) 72%, var(--fg));
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --warn: light-dark(#8a5a12, #e5b071);
+  --fail: light-dark(#a32319, #f0959d);
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, var(--bg));
+  --fail-soft: color-mix(in srgb, var(--fail) 12%, var(--bg));
+  --shadow: 0 16px 40px -28px light-dark(rgb(0 0 0 / 0.26), rgb(0 0 0 / 0.8));
+}
+
+/* 原始浅色：手调过的那 7 个值盖掉派生 */
+[data-theme='light'] {
+  --line-strong: #c5d0ca;
   --accent-soft: #e3efe9;
   --warn: #9a530b;
   --warn-soft: #fbf0df;
   --fail: #ad2c27;
   --fail-soft: #fae9e7;
   --shadow: 0 16px 40px -28px rgba(18, 40, 31, 0.45);
-  --radius: 12px;
-  --font-display: ui-serif, 'Songti SC', 'STSong', 'Noto Serif CJK SC', serif;
 }
 
+[data-theme='mist'] {
+  color-scheme: light;
+  --bg: #f2f7f4;
+  --bg-elev: #ffffff;
+  --bg-soft: #e6efe9;
+  --fg: #17211c;
+  --fg-muted: #5a6762;
+  --line: #d0e0d6;
+  --accent: #047857;
+}
+
+[data-theme='lilac'] {
+  color-scheme: light;
+  --bg: #f8f6fb;
+  --bg-elev: #ffffff;
+  --bg-soft: #f1ecf7;
+  --fg: #261f31;
+  --fg-muted: #6a6076;
+  --line: #e2dbee;
+  --accent: #7c3aed;
+}
+
+[data-theme='sand'] {
+  color-scheme: light;
+  --bg: #faf7f2;
+  --bg-elev: #ffffff;
+  --bg-soft: #f5f0e6;
+  --fg: #221e18;
+  --fg-muted: #6f6657;
+  --line: #eae2d3;
+  --accent: #b45309;
+}
+
+[data-theme='rose'] {
+  color-scheme: light;
+  --bg: #fbf5f7;
+  --bg-elev: #ffffff;
+  --bg-soft: #f5eaee;
+  --fg: #241a1e;
+  --fg-muted: #6f5b62;
+  --line: #ecdce2;
+  --accent: #be123c;
+}
+
+[data-theme='plain'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elev: #f5f5f5;
+  --bg-soft: #eeeeee;
+  --fg: #1a1a1a;
+  --fg-muted: #515c6b;
+  --line: #e0e0e0;
+  --accent: #245bce;
+}
+
+/* 原始深色：可读性优先，1-2 档对比度，正文不低于 4.5:1 */
 [data-theme='dark'] {
   color-scheme: dark;
   --bg: #101513;
@@ -34,6 +112,94 @@
   --fail: #ee928b;
   --fail-soft: #34201e;
   --shadow: 0 18px 44px -28px rgba(0, 0, 0, 0.85);
+}
+
+[data-theme='pine'] {
+  color-scheme: dark;
+  --bg: #0e1613;
+  --bg-elev: #121d1a;
+  --bg-soft: #18271f;
+  --fg: #e4f0e9;
+  --fg-muted: #9db4a8;
+  --line: #1f342c;
+  --accent: #34d399;
+}
+
+[data-theme='dusk'] {
+  color-scheme: dark;
+  --bg: #17131f;
+  --bg-elev: #1f1a2a;
+  --bg-soft: #2b2438;
+  --fg: #ebe8f2;
+  --fg-muted: #a9a1b8;
+  --line: #2e283a;
+  --accent: #cdb4f0;
+}
+
+[data-theme='ember'] {
+  color-scheme: dark;
+  --bg: #191310;
+  --bg-elev: #211a15;
+  --bg-soft: #2c231c;
+  --fg: #f3e8de;
+  --fg-muted: #b5a294;
+  --line: #352a22;
+  --accent: #ffb27d;
+}
+
+[data-theme='slate'] {
+  color-scheme: dark;
+  --bg: #14171a;
+  --bg-elev: #1b1f23;
+  --bg-soft: #232a30;
+  --fg: #e4e9ed;
+  --fg-muted: #9aa6b2;
+  --line: #2a3138;
+  --accent: #9ccdf5;
+}
+
+[data-theme='graphite'] {
+  color-scheme: dark;
+  --bg: #24252d;
+  --bg-elev: #2e2f38;
+  --bg-soft: #3a3b47;
+  --fg: #e3e4eb;
+  --fg-muted: #8d91a6;
+  --line: #3d3e4a;
+  --accent: #6aa1f0;
+}
+
+[data-theme='contrast-light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elev: #ffffff;
+  --bg-soft: #f0f0f0;
+  --fg: #000000;
+  --fg-muted: #333333;
+  --line: #000000;
+  --accent: #0000ee;
+}
+
+[data-theme='contrast-dark'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-elev: #0a0a0a;
+  --bg-soft: #1a1a1a;
+  --fg: #ffffff;
+  --fg-muted: #cccccc;
+  --line: #ffffff;
+  --accent: #66b3ff;
+}
+
+[data-theme='zenburn'] {
+  color-scheme: dark;
+  --bg: #3f3f3f;
+  --bg-elev: #383838;
+  --bg-soft: #474747;
+  --fg: #dcdccc;
+  --fg-muted: #cfcfbf;
+  --line: #6f6f6f;
+  --accent: #f0dfaf;
 }
 
 * {
@@ -208,6 +374,83 @@ select:focus-visible {
 .icon-btn svg {
   width: 17px;
   height: 17px;
+}
+
+/* 主题选择：按钮右边弹出色板，每块用它自己那套变量画，加主题不用在这里配色。 */
+.theme-picker {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(3, 76px);
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.theme-menu[hidden] {
+  display: none;
+}
+
+.theme-opt {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.theme-opt[data-theme-value='auto'] {
+  grid-column: 1 / -1;
+}
+
+.theme-tile {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 4px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, var(--bg));
+  border-radius: 8px;
+}
+
+.theme-opt:hover .theme-tile {
+  border-color: var(--accent);
+}
+
+.theme-opt.is-active .theme-tile {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.theme-tile-auto {
+  color: var(--fg-muted);
+  background: var(--bg-soft);
+}
+
+.theme-chip {
+  width: 12px;
+  height: 12px;
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, var(--bg));
+  border-radius: 3px;
 }
 
 /* 桌面双栏：浏览与筛选在左，资源内容在右。 */

@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import { base } from '../lib/site';
+import { THEME_IDS } from '../lib/theme.mjs';
 
 interface Props {
   title?: string;
@@ -37,12 +38,13 @@ const canonical = Astro.url.href;
     <meta name="twitter:description" content={description} />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
     <link rel="alternate" type="application/rss+xml" title="资源库 · 最近新增" href={`${base}rss.xml`} />
-    <script is:inline>
-      // 在首帧之前定主题，避免闪白
+    <script is:inline define:vars={{ themeIds: THEME_IDS }}>
+      // 在首帧之前定主题，避免闪白；localStorage 里是我删过的旧值就直接当没选。
       try {
         const saved = localStorage.getItem('theme');
         const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.dataset.theme = saved || (prefersDark ? 'dark' : 'light');
+        const fallback = prefersDark ? 'dark' : 'light';
+        document.documentElement.dataset.theme = themeIds.includes(saved) ? saved : fallback;
       } catch {
         /* noop */
       }

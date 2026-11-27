@@ -685,8 +685,8 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.4 8.6l3.2 3.2L12.7 5' fill='none' stroke='%23fff' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* 深色主题的强调色是浅薄荷，白勾看不清，换成深色勾 */
-[data-theme='dark'] .dev-card-pick:checked {
+/* 深色主题下的勾选框：浅色强调色上白勾看不清，换成深色勾。这份 id 名单由 test/theme.test.mjs 盯着 */
+:is([data-theme='dark'], [data-theme='pine'], [data-theme='dusk'], [data-theme='ember'], [data-theme='slate'], [data-theme='graphite'], [data-theme='contrast-dark'], [data-theme='zenburn']) .dev-card-pick:checked {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.4 8.6l3.2 3.2L12.7 5' fill='none' stroke='%23101513' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
