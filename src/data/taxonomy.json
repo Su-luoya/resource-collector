@@ -3,17 +3,16 @@
     {
       "id": "metrics",
       "label": "计量实证",
-      "hint": "做实证要用的东西：估计包、教程与书、方法清单、实证数据与解析工具",
+      "hint": "做实证要用的东西：估计包、教程与书、方法清单",
       "badge": "kind",
       "facets": [
         {
           "id": "kind",
           "label": "形态",
-          "hint": "是能装的估计包、能读的教程，还是数据与清单",
+          "hint": "是能装的估计包、能读的教程，还是清单一类的目录",
           "values": [
             { "id": "pkg", "label": "方法包" },
             { "id": "doc", "label": "教程与书" },
-            { "id": "data", "label": "数据与工具" },
             { "id": "list", "label": "清单与博客" }
           ]
         },
@@ -214,17 +213,19 @@
       ]
     },
     {
-      "id": "skill",
-      "label": "Agent 技能",
-      "hint": "Agent 技能的目录站与开源技能仓库",
+      "id": "ai",
+      "label": "AI 与 Agent",
+      "hint": "用 AI 干活要用的东西：模型 API 与算力平台、AI 导航与中转评测、agent 技能目录与仓库",
       "badge": "kind",
       "facets": [
         {
           "id": "kind",
           "label": "形态",
-          "hint": "是找技能的目录站，还是能直接装的技能仓库",
+          "hint": "是能直接调的服务与平台、找工具用的导航与评测，还是能装的 agent 技能",
           "values": [
-            { "id": "dir", "label": "目录站" },
+            { "id": "service", "label": "服务与平台" },
+            { "id": "nav", "label": "导航与评测" },
+            { "id": "dir", "label": "技能目录" },
             { "id": "repo", "label": "技能仓库" }
           ]
         }

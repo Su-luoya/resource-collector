@@ -4,7 +4,7 @@
 
 个人书签库 + 静态展示站。数据在 Supabase（Postgres），构建前 `npm run sync` 拉到 `.cache/links.json`，页面、校验、脚本都读这份缓存。
 
-- 首页是全部条目的卡片墙，另有 10 个分区页：`/metrics/` 计量实证、`/ml/` 机器学习、`/finance/` 金融与宏观、`/invest/` 投资与理财、`/lit/` 文献搜索、`/data/` 数据、`/tools/` 工具、`/writing/` 写作与汇报、`/skill/` agent skill、`/scholar/` 学者主页
+- 首页是全部条目的卡片墙，另有 10 个分区页：`/metrics/` 计量实证、`/ml/` 机器学习、`/finance/` 金融与宏观、`/invest/` 投资与理财、`/lit/` 文献搜索、`/data/` 数据、`/tools/` 工具、`/writing/` 写作与排版、`/ai/` AI 与 Agent、`/scholar/` 学者主页
 - 另有 `/links.json`（原始数据 API）与 `/rss.xml`（最新 40 条）
 - 搜索按空格分词，词序不限，可与分类筛选叠加；结果旁「复制这 N 条」按页面顺序复制成 Markdown
 
@@ -57,26 +57,26 @@
 
 | id | 显示名 | 收录范围 |
 | --- | --- | --- |
-| `metrics` | 计量实证 | 估计与检验的包、方法教材笔记、方法目录、数据搬运代码 |
+| `metrics` | 计量实证 | 估计与检验的包、方法教材笔记、方法目录 |
 | `ml` | 机器学习 | 深度学习框架、强化学习、训练与调参的资料 |
 | `finance` | 金融与宏观 | 金融宏观的库、论文、数据集，按资产品类标 |
 | `invest` | 投资与理财 | 能直接上手用的行情与申赎限额、基金筛选、回测与组合工具、理财计算器 |
-| `lit` | 文献搜索 | 检索入口、论文聚合流、数据库索引 |
+| `lit` | 文献搜索 | 检索入口、论文聚合流、顶刊动态 |
 | `data` | 数据 | 数据源、下载接口、指数与指标、数据集、处理代码，按领域标 |
-| `tools` | 工具 | 通用库、在线工具、平台服务、博客、导航与目录 |
-| `writing` | 写作与汇报 | 论文模板、排版与图表指南、幻灯片工具 |
-| `skill` | agent skill | 技能目录站与技能仓库 |
+| `tools` | 工具 | 通用库、在线小工具、平台服务、博客、导航与目录（投资类归 `invest`，AI 类归 `ai`） |
+| `writing` | 写作与排版 | 写作教程、LaTeX 与参考文献样式、文献与项目管理 |
+| `ai` | AI 与 Agent | 模型 API 与算力平台、AI 导航与中转评测、agent 技能目录与仓库 |
 | `scholar` | 学者主页 | 研究者个人主页与工作论文 |
 
 **B. 分类轴**
 
 | 分区 | 轴 | 单选/多选 | 取值 |
 | --- | --- | --- | --- |
-| `metrics` | `kind` 形态 | 单选 | `pkg` 包、`doc` 教材与文档、`data` 数据与搬运代码、`list` 目录与清单 |
+| `metrics` | `kind` 形态 | 单选 | `pkg` 包、`doc` 教材与文档、`list` 目录与清单 |
 | `metrics` | `lang` 语言 | 多选 | `python`、`stata`、`r`、`any`（跨语言标不限） |
 | `ml` | `kind` 形态 | 单选 | `fw` 框架与库、`rl` 强化学习、`doc` 教程与课程 |
 | `ml` | `lang` 语言 | 多选 | `python`、`any` |
-| `finance` | `kind` 形态 | 单选 | `lib` 金融库、`data` 数据、`paper` 论文 |
+| `finance` | `kind` 形态 | 单选 | `lib` 金融库、`data` 数据、`paper` 按方向筛的论文流（一般同时挂 `lit`） |
 | `finance` | `topic` 品类 | 多选 | `asset` 资产定价、`corporate` 公司金融、`banking` 银行、`macro` 宏观、`micro` 微观结构 |
 | `invest` | `kind` 形态 | 单选 | `tool` 在线工具、`data` 行情与数据、`lib` 库与框架、`doc` 教程与书、`service` 平台与服务 |
 | `invest` | `market` 品种 | 多选 | `fund` 基金与 ETF、`stock` 股票、`bond` 债券与固收、`deriv` 衍生品、`overseas` 跨境与海外 |
@@ -85,7 +85,7 @@
 | `data` | `topic` 领域 | 多选 | `macro` 宏观、`corporate` 公司金融、`banking` 银行、`asset` 资产定价、`micro` 微观结构、`text` 文本与另类数据、`accounting` 会计 |
 | `tools` | `kind` 形态 | 单选 | `lib` 通用库、`tool` 在线小工具、`service` 平台服务、`nav` 导航与目录、`blog` 博客与通讯 |
 | `writing` | `kind` 形态 | 单选 | `doc` 论文模板与格式、`style` 排版与图表指南、`manage` 文献与项目管理 |
-| `skill` | `kind` 形态 | 单选 | `dir` 技能目录与市场、`repo` 技能仓库 |
+| `ai` | `kind` 形态 | 单选 | `service` 模型 API 与算力平台、`nav` AI 导航与中转评测、`dir` 技能目录、`repo` 技能仓库 |
 | `scholar` | `field` 研究领域 | 多选 | `corporate`、`banking`、`asset`、`macro`、`metrics`、`ml`、`code` |
 
 判断依据是**资源的主体是什么**，不看页面长得像什么：包的官方文档站算该主题页的 `pkg`，讲怎么用这个包的教材才是 `doc`。分区之间平级——`data` 只放「数据本身」，金融宏观数据双挂 `finance`。`finance` 与研究向的定价库、论文、学术数据打交道，`invest` 只放把钱放出去时能直接用的东西（行情、申赎限额、筛选器、回测与计算器）；同一个工具既有研究用法又有实操入口时两头都挂。要加分区或取值，改 `taxonomy.json` 即可，页面路由与 chips 都由它生成。
