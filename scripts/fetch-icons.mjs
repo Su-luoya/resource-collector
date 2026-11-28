@@ -16,6 +16,7 @@ import { hostKey } from '../src/lib/link-data.mjs';
 import { describeMiss, isRetryable, MISS_DAYS } from '../src/lib/icon-cache.mjs';
 import { clientFor, refreshCache, storageFor } from '../src/lib/cloud-sync.mjs';
 import { objectName } from '../src/lib/storage.mjs';
+import { PAGE_LIMIT, readPrefix } from '../src/lib/http-body.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const force = process.argv.includes('--force');
@@ -61,7 +62,7 @@ const EXT = {
 const MIME = Object.fromEntries(Object.entries(EXT).map(([mime, ext]) => [ext, mime]));
 
 const slug = (host) => host.replace(/[^a-z0-9.-]/gi, '_');
-const localPath = (file) => resolve(root, 'public', file);
+const localPath = (file) => resolve(outDir, objectName(file));
 const mimeOf = (name) => MIME[name.split('.').pop()?.toLowerCase()] ?? 'application/octet-stream';
 
 // 现有映射与失败记录都从库里读：换台机器、换次 CI 都接着上次的进度走
@@ -69,7 +70,7 @@ const iconRows = await client.listIcons();
 const map = {};
 const misses = {};
 for (const row of iconRows) {
-  if (row.file) map[row.host] = row.file;
+  if (objectName(row.file)) map[row.host] = row.file;
   else if (row.missed_at) misses[row.host] = row.missed_at;
 }
 
@@ -92,24 +93,18 @@ if (push) {
   process.exit(0);
 }
 
-async function get(url, timeout = 10_000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeout);
-  try {
-    return await fetch(url, { headers: { 'User-Agent': UA }, redirect: 'follow', signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
+const get = (url, timeout = 10_000) => fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(timeout) });
 
 /** 下载并校验，文件名只由规范化域名决定；类型/体积不合适就放弃。返回待上传的字节 */
 async function save(key, url) {
   const res = await get(url);
-  if (!res.ok) return null;
   const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const ext = EXT[type];
-  if (!ext) return null;
-  const bytes = Buffer.from(await res.arrayBuffer());
+  if (!res.ok || !ext) {
+    await res.body?.cancel();
+    return null;
+  }
+  const bytes = await readPrefix(res, 300_001);
   if (bytes.length < 70 || bytes.length > 300_000) return null; // 太小是占位图/空文件，太大不是图标
   const name = `${slug(key)}.${ext}`;
   return { file: `icons/${name}`, name, bytes, type };
@@ -128,13 +123,16 @@ async function discover(hostname, key) {
   for (const host of list) {
     try {
       const res = await get(`https://${host}/`, 12_000);
-      if (!res.ok) continue;
-      const html = await res.text();
+      if (!res.ok) {
+        await res.body?.cancel();
+        continue;
+      }
+      const html = (await readPrefix(res, PAGE_LIMIT)).toString('utf8');
       const tags = html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]*>/gi) || [];
       for (const tag of tags) {
         const href = tag.match(/href=["']([^"']+)["']/i)?.[1];
         if (!href) continue;
-        const abs = new URL(href, `https://${host}/`).href;
+        const abs = new URL(href, res.url).href;
         const saved = await save(key, abs).catch(() => null);
         if (saved) return saved;
       }
@@ -175,7 +173,6 @@ async function worker() {
     }
 
     const found = await discover(hosts.get(key), key);
-    const now = new Date().toISOString();
     if (found) {
       // 先上传再写表：表里的映射必须对得上 Storage 里真实存在的对象
       try {
@@ -185,15 +182,13 @@ async function worker() {
         continue; // 不写表、不记冷却，下回再来
       }
       writeFileSync(localPath(found.file), found.bytes);
-      map[key] = found.file;
-      delete misses[key];
-      console.log(`✓ ${key} → ${found.file}`);
       await client.upsertIcons([{ host: key, file: found.file, missed_at: null }]);
+      console.log(`✓ ${key} → ${found.file}`);
+    } else if (existing) {
+      console.log(`✗ ${key} 暂时取不到，保留原图标`);
     } else {
-      delete map[key];
-      misses[key] = now;
       console.log(`✗ ${key} 取不到图标，用首字母占位`);
-      await client.upsertIcons([{ host: key, file: null, missed_at: now }]);
+      await client.upsertIcons([{ host: key, file: null, missed_at: new Date().toISOString() }]);
     }
   }
 }
@@ -202,24 +197,24 @@ await Promise.all(Array.from({ length: 6 }, worker));
 // 数据里已经删掉的域名不再留在表里：表行与 Storage 对象一起清，不然库越用越脏
 // （表里的孤儿行不会自己消失，Storage 对象也是；以后排查「引用了不存在的对象」时都是噪音）
 const stale = iconRows.filter((row) => !hosts.has(row.host));
-for (const key of Object.keys(map)) if (!hosts.has(key)) delete map[key];
+let retired = [];
 if (stale.length) {
-  const objects = stale.map((row) => objectName(row.file)).filter(Boolean);
   try {
-    if (objects.length) await storage.remove(objects);
     await client.deleteIcons(stale.map((row) => row.host));
-    console.log(`\n已删掉 ${stale.length} 个已不在数据里的域名映射${objects.length ? `（含 ${objects.length} 个 Storage 对象）` : ''}：${stale.map((row) => row.host).join(', ')}`);
+    retired = stale.map((row) => objectName(row.file)).filter(Boolean);
+    console.log(`\n已删掉 ${stale.length} 个旧域名映射`);
   } catch (error) {
     // 清理失败不该让整次发布失败：图标照旧，下次再清
     console.warn(`! 清理旧图标映射失败：${error.message}`);
   }
 }
 
-await refreshCache(client);
-
-// public/icons 是完全派生的缓存：清掉没人引用的文件，免得它们混进 dist
-const referenced = new Set(Object.values(map).map((path) => objectName(path)));
+const { icons } = await refreshCache(client);
+const referenced = new Set(Object.values(icons).map(objectName));
+// 两个域名可以共用一个文件。确实没人引用，才删 Storage 和本地缓存。
+const unused = retired.filter((name) => !referenced.has(name));
+if (unused.length) await storage.remove(unused).catch((error) => console.warn(`! 旧图标对象未删除：${error.message}`));
 const orphans = readdirSync(outDir).filter((name) => !referenced.has(name) && name !== '.gitkeep');
 for (const name of orphans) unlinkSync(resolve(outDir, name));
 if (orphans.length) console.log(`\n已清理 ${orphans.length} 个没人引用的本地图标：${orphans.join(', ')}`);
-console.log(`\n完成：${Object.keys(map).length}/${hosts.size} 个域名有图标 → icons 表 + Storage`);
+console.log(`\n完成：${Object.keys(icons).length}/${hosts.size} 个域名有图标 → icons 表 + Storage`);

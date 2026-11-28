@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import cache from '../../.cache/links.json';
+import { objectName } from './storage.mjs';
 import taxonomy from '../data/taxonomy.json';
 import { hostKey, validateRows } from './link-data.mjs';
 import { sortLinks } from './ordering.mjs';
@@ -167,7 +170,10 @@ export const facetsFor = (sid: string, rows: Resource[] = sectionLinks(sid)): Fa
 
 /** 图标表：host → public 下的相对路径，由 scripts/fetch-icons.mjs 写好并同步进库 */
 export const icons = cache.icons as Record<string, string>;
-export const iconFor = (host: string): string | undefined => icons[host];
+export const iconFor = (host: string): string | undefined => {
+  const name = objectName(icons[host]);
+  return name && existsSync(resolve('public/icons', name)) ? `icons/${name}` : undefined;
+};
 
 const statuses = (cache.status ?? {}) as Record<string, LinkStatus>;
 export const statusOf = (url: string): LinkStatus | undefined => statuses[url];

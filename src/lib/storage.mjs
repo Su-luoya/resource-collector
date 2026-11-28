@@ -11,7 +11,10 @@
 export const BUCKET = 'icons';
 
 /** `icons/fred.stlouisfed.org.ico` → `fred.stlouisfed.org.ico`（表里存的是 public 下的相对路径） */
-export const objectName = (file) => String(file ?? '').replace(/^icons\//, '');
+export const objectName = (file) => {
+  const name = typeof file === 'string' ? file.replace(/^icons\//, '') : '';
+  return /^[a-z0-9_-][a-z0-9._-]*\.(?:ico|png|svg|jpe?g|gif|webp)$/i.test(name) ? name : '';
+};
 
 /** 公开对象的地址。只用于构建期下载，页面里不出现它 */
 export const publicUrl = (url, file) =>
@@ -25,6 +28,7 @@ export const createStorage = ({ url, key, fetchImpl = fetch }) => {
     /** 同名覆盖写（x-upsert）：重新抓到的图标直接替换，不用先删 */
     upload: async (name, bytes, contentType) => {
       const object = objectName(name);
+      if (!object) throw new Error('无效的图标文件名');
       const res = await fetchImpl(`${base}/object/${BUCKET}/${encodeURIComponent(object)}`, {
         method: 'POST',
         headers: {
@@ -44,6 +48,7 @@ export const createStorage = ({ url, key, fetchImpl = fetch }) => {
 
     /** 走公开地址读，不带鉴权头；对象不存在返回 null，由调用方决定是警告还是报错 */
     download: async (file) => {
+      if (!objectName(file)) return null;
       const res = await fetchImpl(publicUrl(url, file));
       if (!res.ok) return null;
       const bytes = new Uint8Array(await res.arrayBuffer());

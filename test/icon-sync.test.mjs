@@ -17,6 +17,12 @@ test('objectName 去掉 icons/ 前缀；publicUrl 拼到 /object/public/icons/ �
   );
 });
 
+test('图标对象必须是单个图片文件名，而不是目录或其他类型的文件', () => {
+  for (const value of [null, 'icons/subdir/pic.png', 'icons/config.json', 'icons/']) {
+    assert.equal(objectName(value), '');
+  }
+});
+
 test('只下载本地缺的图标；取不到的只记失败，不抛也不落空文件', async (t) => {
   const scratch = join(process.cwd(), '.scratch');
   mkdirSync(scratch, { recursive: true });
@@ -37,15 +43,16 @@ test('只下载本地缺的图标；取不到的只记失败，不抛也不落�
       'have.example': 'icons/have.ico',
       'new.example': 'icons/new.ico',
       'gone.example': 'icons/gone.ico',
+      'invalid.example': 'icons/subdir/pic.png',
     },
   };
 
   const result = await syncIcons({ dir, cache, storage });
 
   assert.deepEqual(asked.sort(), ['icons/gone.ico', 'icons/new.ico']);
-  assert.equal(result.total, 3);
+  assert.equal(result.total, 4);
   assert.equal(result.downloaded, 1);
-  assert.deepEqual(result.failed, ['gone.example']);
+  assert.deepEqual(result.failed.sort(), ['gone.example', 'invalid.example']);
   // 已在本地的不重下、不被覆盖
   assert.equal(readFileSync(join(dir, 'public/icons/have.ico'), 'utf8'), 'old');
   assert.equal(readFileSync(join(dir, 'public/icons/new.ico')).length, 3);

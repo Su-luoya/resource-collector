@@ -22,17 +22,23 @@ export const syncIcons = async ({ force = false, dir, cache, storage, log = () =
   mkdirSync(outDir, { recursive: true });
 
   const queue = [];
+  const failed = [];
   for (const [host, file] of Object.entries(icons)) {
-    const target = resolve(outDir, objectName(file));
+    const name = objectName(file);
+    if (!name) {
+      failed.push(host);
+      log(`✗ ${host}（无效的图标文件名）`);
+      continue;
+    }
+    const target = resolve(outDir, name);
     if (!force && existsSync(target)) continue;
     queue.push({ host, file, target });
   }
 
   const total = Object.keys(icons).length;
-  if (!queue.length) return { total, downloaded: 0, failed: [] };
+  if (!queue.length) return { total, downloaded: 0, failed };
 
   const client = storage ?? storageFor();
-  const failed = [];
   let downloaded = 0;
 
   const worker = async () => {
