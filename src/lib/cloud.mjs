@@ -51,13 +51,20 @@ export const fromStatusRow = (row) => {
   return info;
 };
 
-export const toStatusRow = (info) => {
-  const row = { url: info.url, status: info.status, checked: info.checked };
-  if (Number.isFinite(info.code)) row.code = info.code;
-  if (info.final) row.target = info.final;
-  if (info.error) row.error = info.error;
-  return row;
-};
+/**
+ * 每行的键必须完全一致：PostgREST 批量插入（POST 数组）在键不齐时整批拒绝
+ * （PGRST102 "All object keys must match"），一条 ok 混一条 redirect 就会全军覆没，
+ * 而且不报是哪条的问题。所以缺的字段显式写 null——合并写入时也正好把旧值清掉
+ * （本来 redirect 的 target，重定向修好后不该留着）。
+ */
+export const toStatusRow = (info) => ({
+  url: info.url,
+  status: info.status,
+  checked: info.checked,
+  code: Number.isFinite(info.code) ? info.code : null,
+  target: info.final || null,
+  error: info.error || null,
+});
 
 export const toIconRow = ({ host, file, missedAt }) => {
   const row = { host, file: file ?? null, missed_at: file ? null : (missedAt ?? new Date().toISOString()) };
@@ -152,6 +159,12 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
     upsertIcons: async (rows) => {
       if (!rows.length) return;
       await request('POST', '/icons?on_conflict=host', { body: rows, prefer: 'resolution=merge-duplicates,return=minimal' });
+    },
+    /** 清理已经不在数据里的域名：批量删，一次请求；hostKey 保证值里只有 [a-z0-9.-]，引号只是兜底 */
+    deleteIcons: async (hosts) => {
+      if (!hosts.length) return;
+      const list = hosts.map((host) => `"${String(host).replace(/"/g, '')}"`).join(',');
+      await request('DELETE', `/icons?host=in.(${encodeURIComponent(list)})`, { prefer: 'return=minimal' });
     },
     listIcons: async () => selectAll('icons', 'host'),
   };

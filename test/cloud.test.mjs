@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createClient, fromRow, fromStatusRow, toIconRow, toRow } from '../src/lib/cloud.mjs';
+import { createClient, fromRow, fromStatusRow, toIconRow, toRow, toStatusRow } from '../src/lib/cloud.mjs';
 
 const link = {
   title: 'A/B 测试计算器',
@@ -61,6 +61,24 @@ test('体检行与图标行', () => {
   assert.equal(miss.missed_at, '2025-05-06T00:00:00.000Z');
 });
 
+// 批量插入的行必须键齐：ok 行没有 code/target/error，redirect 行有 target，fail 行有 error。
+// 缺字段就整批被 PostgREST 拒（PGRST102 "All object keys must match"，且不说是哪条）。
+test('体检行键一律齐全，混着 ok/redirect/fail 也能一个请求写完', async () => {
+  const shapes = [
+    { url: 'https://a.b', status: 'ok', checked: '2026-01-01', code: 200 },
+    { url: 'https://c.d', status: 'redirect', checked: '2026-01-01', code: 301, final: 'https://c.d/' },
+    { url: 'https://e.f', status: 'fail', checked: '2026-01-01', error: 'ECONNRESET' },
+  ].map(toStatusRow);
+  const keys = shapes.map((row) => Object.keys(row).sort().join(','));
+  assert.equal(new Set(keys).size, 1, `键不齐：${keys.join(' | ')}`);
+  assert.deepEqual(shapes[2], { url: 'https://e.f', status: 'fail', checked: '2026-01-01', code: null, target: null, error: 'ECONNRESET' });
+
+  const calls = [];
+  const client = createClient({ url: 'https://x.supabase.co/', key: 'k', fetchImpl: fakeFetch(calls, () => ({ status: 201, body: '' })) });
+  await client.upsertStatuses(shapes);
+  assert.equal(calls.length, 1);
+});
+
 const fakeFetch = (calls, reply = ({ url }) => ({ status: 200, body: /select=url/.test(url) ? [] : '' })) => async (url, init) => {
   calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined, prefer: init.headers.Prefer });
   const { status, body } = reply({ url, method: init.method, init });
@@ -118,7 +136,7 @@ test('upsertStatuses 一个请求写完一轮体检', async () => {
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /\/rest\/v1\/link_status\?on_conflict=url$/);
   assert.equal(calls[0].body.length, 2);
-  assert.deepEqual(calls[0].body[1], { url: 'https://c.d', status: 'fail', checked: '2025-05-06', code: 404 });
+  assert.deepEqual(calls[0].body[1], { url: 'https://c.d', status: 'fail', checked: '2025-05-06', code: 404, target: null, error: null });
 });
 
 test('出错时把状态码与响应片段带进异常', async () => {
