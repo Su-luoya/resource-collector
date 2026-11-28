@@ -14,19 +14,20 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { hostKey } from '../src/lib/link-data.mjs';
 import { describeMiss, isRetryable, MISS_DAYS } from '../src/lib/icon-cache.mjs';
-import { clientFor, readCache, refreshCache, storageFor } from '../src/lib/cloud-sync.mjs';
+import { clientFor, refreshCache, storageFor } from '../src/lib/cloud-sync.mjs';
 import { objectName } from '../src/lib/storage.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const force = process.argv.includes('--force');
 const push = process.argv.includes('--push');
-const cache = readCache();
-const rows = cache.links;
 const outDir = resolve(root, 'public/icons');
 mkdirSync(outDir, { recursive: true });
 
+// 域名集合以云端为准，不读本地缓存：下面清旧映射是按它做减法的，缓存落后（刚收了链接还没 sync）
+// 就会把新域名的图标当成「已删除」一起清掉。
 const client = clientFor({ write: true });
 const storage = storageFor({ write: true });
+const rows = await client.listLinks();
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -198,8 +199,21 @@ async function worker() {
 }
 await Promise.all(Array.from({ length: 6 }, worker));
 
-// 数据里已经删掉的域名不再留在表里（库里那些行留着无害，但别让它们进映射）
+// 数据里已经删掉的域名不再留在表里：表行与 Storage 对象一起清，不然库越用越脏
+// （表里的孤儿行不会自己消失，Storage 对象也是；以后排查「引用了不存在的对象」时都是噪音）
+const stale = iconRows.filter((row) => !hosts.has(row.host));
 for (const key of Object.keys(map)) if (!hosts.has(key)) delete map[key];
+if (stale.length) {
+  const objects = stale.map((row) => objectName(row.file)).filter(Boolean);
+  try {
+    if (objects.length) await storage.remove(objects);
+    await client.deleteIcons(stale.map((row) => row.host));
+    console.log(`\n已删掉 ${stale.length} 个已不在数据里的域名映射${objects.length ? `（含 ${objects.length} 个 Storage 对象）` : ''}：${stale.map((row) => row.host).join(', ')}`);
+  } catch (error) {
+    // 清理失败不该让整次发布失败：图标照旧，下次再清
+    console.warn(`! 清理旧图标映射失败：${error.message}`);
+  }
+}
 
 await refreshCache(client);
 

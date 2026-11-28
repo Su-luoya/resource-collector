@@ -260,3 +260,20 @@ export const diffRows = (before, after) => {
   const details = diffRowDetails(before, after);
   return { added: details.added.length, removed: details.removed.length, changed: details.changed.length };
 };
+
+/**
+ * 图标映射（host → Storage 对象名）的差异，给发布预览逐行显示。
+ * 新增 / 删除 / 换扩展名（同名重新抓到另一种类型的图）都是真实变更：
+ * 图标的字节和映射都只在云端，看不出差异的时候不该说「没变化」。
+ */
+export const diffIconMaps = (before, after) => {
+  const prev = before ?? {};
+  const next = after ?? {};
+  const lines = [];
+  for (const host of Object.keys(next).sort()) {
+    if (!(host in prev)) lines.push(`+ ${host}`);
+    else if (prev[host] !== next[host]) lines.push(`~ ${host}`);
+  }
+  for (const host of Object.keys(prev).sort()) if (!(host in next)) lines.push(`- ${host}`);
+  return lines;
+};

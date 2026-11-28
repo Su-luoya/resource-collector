@@ -23,7 +23,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
-import { validateRows, diffRows, diffRowDetails, urlKey } from './lib/link-data.mjs';
+import { validateRows, diffRows, diffRowDetails, diffIconMaps, urlKey } from './lib/link-data.mjs';
 import { clean, extractMeta, htmlToText, normUrl } from './lib/dev-meta.mjs';
 import { buildPrompt, mergeDraft, parseDraft } from './lib/ai-draft.mjs';
 import { datedStatus, maintenanceTasks, probeLink } from './lib/link-maintenance.mjs';
@@ -55,9 +55,15 @@ const json = (body: unknown, status = 200) =>
  * 库是唯一事实源。dev 进程里留一份内存镜像，省掉每次请求都拉全表；
  * 写入一律先写库，成功后再刷新镜像与 `.cache/links.json`，失败就什么都不改。
  */
-const store: { rows: Resource[]; statuses: Record<string, LinkStatus>; loaded: boolean } = {
+const store: {
+  rows: Resource[];
+  statuses: Record<string, LinkStatus>;
+  icons: Record<string, string>;
+  loaded: boolean;
+} = {
   rows: [],
   statuses: {},
+  icons: {},
   loaded: false,
 };
 
@@ -67,6 +73,7 @@ const loadStore = () => {
     const cache = JSON.parse(readFileSync(resolve(ROOT, CACHE_REL), 'utf8'));
     store.rows = (cache.links ?? []) as Resource[];
     store.statuses = (cache.status ?? {}) as Record<string, LinkStatus>;
+    store.icons = (cache.icons ?? {}) as Record<string, string>;
     store.loaded = true;
   } catch {
     throw new Error('没有 .cache/links.json：先跑 npm run sync 从云端拉一次数据');
@@ -77,6 +84,9 @@ const loadStore = () => {
 const readRows = (): Resource[] => loadStore().rows;
 
 const readStatuses = (): Record<string, LinkStatus> => loadStore().statuses;
+
+/** host → Storage 对象名；只含真抓到图的域名，抓不到的记在库里的 missed_at，不进这份映射 */
+const readIcons = (): Record<string, string> => loadStore().icons;
 
 /**
  * 写库统一入口：先校验，再只写这一轮真正变了的行。
@@ -280,23 +290,35 @@ const BATCH_STEPS = [{ id: 'fetch', label: '抓取页面标题与简介' }];
  * 用它与现数据对比，得出待发布的新增/删除/修改；不再依赖 git HEAD（库已经是事实源）。
  * status 存的是同一时刻的链接体检状态，用来判断这次重建会带上新的体检结果。
  */
-type PublishedSnapshot = { links: Resource[]; status: Record<string, LinkStatus> };
+type PublishedSnapshot = {
+  links: Resource[];
+  status: Record<string, LinkStatus>;
+  /** null 表示老快照里没存过图标映射（那时图标还在仓库里），不拿它当「全部归零」来比 */
+  icons: Record<string, string> | null;
+};
 
 const readPublishedSnapshot = (): PublishedSnapshot => {
   try {
     const raw = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8'));
-    return { links: (raw.links ?? []) as Resource[], status: (raw.status ?? {}) as Record<string, LinkStatus> };
+    return {
+      links: (raw.links ?? []) as Resource[],
+      status: (raw.status ?? {}) as Record<string, LinkStatus>,
+      icons: (raw.icons ?? null) as Record<string, string> | null,
+    };
   } catch {
-    return { links: [], status: {} };
+    return { links: [], status: {}, icons: null };
   }
 };
 
 const readPublished = (): Resource[] => readPublishedSnapshot().links;
 
-const writePublished = (rows: Resource[], status: Record<string, LinkStatus>) => {
+const writePublished = (rows: Resource[], status: Record<string, LinkStatus>, icons: Record<string, string>) => {
   const target = resolve(ROOT, PUBLISHED_REL);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows, status }, null, 2)}\n`);
+  writeFileSync(
+    target,
+    `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows, status, icons }, null, 2)}\n`,
+  );
 };
 
 /** 与上次发布对比，得出待发布的新增/删除/修改条数 */
@@ -315,8 +337,10 @@ const handlePublishPreview = () => {
   const statusChanged = Object.keys(published.status).some(
     (url) => JSON.stringify(published.status[url]) !== JSON.stringify(statuses[url]),
   );
-  // 图标现在由 CI 在构建时抓（只进产物，不回写仓库），所以没有「图标文件待提交」这回事。
-  return json({ ok: true, ...diffRowDetails(published.links, rows), statusChanged, icons: [] });
+  // 图标现在字节在 Storage、映射在 icons 表，仓库里不再有文件要提交；
+  // 但「这次发布会换掉哪些域名」仍然值得先看见，所以拿上次发布的快照做一次真实对比。
+  const icons = published.icons ? diffIconMaps(published.icons, readIcons()) : [];
+  return json({ ok: true, ...diffRowDetails(published.links, rows), statusChanged, icons });
 };
 
 const handleDuplicates = async (request: Request) => {
@@ -820,7 +844,7 @@ const runPublishTask = async (id: string) => {
       const detail = `触发失败：${gitError(error) || '请确认本机装了 gh 并已 gh auth login'}`;
       return tasks.fail(id, { stepId: 'dispatch', message: detail, result: { ok: false, message: detail } });
     }
-    writePublished(store.rows, store.statuses);
+    writePublished(store.rows, store.statuses, store.icons);
     tasks.mark(id, 'dispatch', 'ok', branch);
     const parts = [
       before.added ? `新增 ${before.added} 条` : '',

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { dumpLinks, parseLinks, validateRows, diffRows, diffRowDetails, hostKey } = await import(
+const { dumpLinks, parseLinks, validateRows, diffRows, diffRowDetails, diffIconMaps, hostKey } = await import(
   resolve(root, 'src/lib/link-data.mjs')
 );
 
@@ -251,6 +251,14 @@ test('diffRows 按 url 给出 新增 / 删除 / 修改', () => {
   const after = [row({ title: 'A 站改名' }), row({ url: 'https://c.example.com' })];
   assert.deepEqual(diffRows(before, after), { added: 1, removed: 1, changed: 1 });
   assert.deepEqual(diffRows(before, before), { added: 0, removed: 0, changed: 0 });
+});
+
+test('diffIconMaps：新增 / 删除 / 换扩展名都算变化，顺序稳定', () => {
+  const before = { 'a.com': 'icons/a.com.ico', 'b.com': 'icons/b.com.png', 'gone.com': 'icons/gone.com.ico' };
+  const after = { 'a.com': 'icons/a.com.ico', 'b.com': 'icons/b.com.ico', 'new.com': 'icons/new.com.svg' };
+  assert.deepEqual(diffIconMaps(before, after), ['~ b.com', '+ new.com', '- gone.com']);
+  assert.deepEqual(diffIconMaps(before, before), []);
+  assert.deepEqual(diffIconMaps({}, { 'a.com': 'icons/a.com.ico' }), ['+ a.com']);
 });
 
 test('diffRowDetails：同名唯一的一删一增配成修改，而不是删+增', () => {

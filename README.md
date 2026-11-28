@@ -137,11 +137,11 @@ src/
     icon-sync.mjs      构建期把库里引用的图标从 Storage 下到 public/icons/（派生物，git-ignored）
   components/Catalog.astro  首页与分区页共用骨架：导航、chips、卡片墙、dev 表单
   client/filter.ts     分面筛选、搜索高亮、排序、最近 7 天、待看开关
-  pages/               index.astro、[section].astro（9 页，路由由 taxonomy 生成）、links.json.ts、rss.xml.ts
+  pages/               index.astro、[section].astro（10 个分区页，路由由 taxonomy 生成）、l/[slug].astro、links.json.ts、rss.xml.ts
   dev/                 仅 dev：editor.ts（增删改 / 批量导入 / 发布预览 / 查重）、task.ts、toast.ts、command-palette.ts
   middleware.ts        仅 dev 的 /api/{meta,ai-draft,batch-meta,batch-add,duplicates,duplicates-scan,edit,status,publish-preview,maintenance,recheck,publish,task}
 test/                  npm test
-scripts/               validate.mjs（check）、fetch-icons.mjs、check-links.mjs
+scripts/               validate.mjs（check）、fetch-icons.mjs（抓图标传 Storage、清过期映射）、check-links.mjs（周检）
 ```
 
 ## 预览站里的操作

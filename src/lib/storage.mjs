@@ -49,5 +49,20 @@ export const createStorage = ({ url, key, fetchImpl = fetch }) => {
       const bytes = new Uint8Array(await res.arrayBuffer());
       return bytes.length ? bytes : null;
     },
+
+    /** 批量删对象（域名已从数据里删掉时用）。对象本来就不存在也算成功 */
+    remove: async (files) => {
+      const prefixes = files.map(objectName).filter(Boolean);
+      if (!prefixes.length) return;
+      const res = await fetchImpl(`${base}/object/${BUCKET}`, {
+        method: 'DELETE',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefixes }),
+      });
+      if (!res.ok) {
+        const detail = (await res.text()).trim().slice(0, 200) || res.statusText;
+        throw new Error(`删除 ${prefixes.length} 个对象失败：HTTP ${res.status} ${detail}`);
+      }
+    },
   };
 };

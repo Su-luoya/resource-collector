@@ -52,7 +52,7 @@
 - `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 10 个分区页（路由由 taxonomy 生成）
 - `src/client/filter.ts` — 客户端筛选：轴从 chip 的 `data-facet` 读，首页只有 section 一条轴；还负责卡片重排、搜索高亮、最近 7 天开关、待看开关
 - `src/client/search.ts` — 搜索框解析：分面前缀（`#scholar` 之类）、`domain:`、`is:`、`unread` 伪轴，以及标题/简介/域名的匹配与排序
-- `src/pages/l/[slug].astro` — 每条资源的详情页（95 页，由 slug 派生）；`src/lib/slug.mjs` 负责生成地址，`src/lib/note.mjs` 负责笔记的 Markdown 子集渲染
+- `src/pages/l/[slug].astro` — 每条资源的详情页（页数随数据走，由 slug 派生）；`src/lib/slug.mjs` 负责生成地址，`src/lib/note.mjs` 负责笔记的 Markdown 子集渲染
 - `src/pages/sitemap.xml.ts` — 静态 sitemap（首页 / 10 个分区 / 每条资源详情页）
 - `src/styles/global.css` — 全部样式（含深浅色变量）
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`（图标脚本的失败缓存规则在 `src/lib/icon-cache.mjs`）
