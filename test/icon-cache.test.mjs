@@ -35,7 +35,7 @@ test('已知取不到的域名：脚本跳过且不联网，图标表保持不�
 
   for (const dir of ['scripts', 'src/lib', 'src/data', 'public/icons', '.cache']) mkdirSync(join(tmp, dir), { recursive: true });
   cpSync(join(root, 'scripts/fetch-icons.mjs'), join(tmp, 'scripts/fetch-icons.mjs'));
-  for (const file of ['link-data.mjs', 'icon-cache.mjs', 'cloud.mjs', 'cloud-sync.mjs']) {
+  for (const file of ['link-data.mjs', 'icon-cache.mjs', 'cloud.mjs', 'cloud-sync.mjs', 'storage.mjs']) {
     cpSync(join(root, 'src/lib', file), join(tmp, 'src/lib', file));
   }
   // 失败记录现在存在图标表里（file 为空 + missed_at），不再是本地文件

@@ -36,12 +36,20 @@ create table if not exists public.link_status (
   error    text
 );
 
--- 图标映射：file 为空表示「取不到」，missed_at 用来判断多久之后再重试
+-- 图标映射：file 是 Storage 桶 icons 里的对象名（public 下相对路径，如 icons/x.ico）；
+-- file 为空表示「取不到」，missed_at 用来判断多久之后再重试
 create table if not exists public.icons (
   host        text primary key,
   file        text,
   missed_at   timestamptz
 );
+
+-- 图标字节本身存在 Storage 桶 icons（public read），仓库不保存图片文件：
+-- 发布时 fetch-icons 上传，构建前 npm run sync 下到 public/icons/（git-ignored）。
+-- 桶不能在应用里建，这一句在 Supabase SQL Editor 里跑一次即可（重复跑无害）。
+insert into storage.buckets (id, name, public)
+values ('icons', 'icons', true)
+on conflict (id) do update set public = true;
 
 alter table public.links       enable row level security;
 alter table public.link_status enable row level security;

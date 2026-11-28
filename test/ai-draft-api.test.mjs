@@ -73,6 +73,7 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
+    'src/lib/storage.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',
     'src/lib/icon-cache.mjs',

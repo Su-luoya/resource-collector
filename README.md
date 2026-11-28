@@ -102,7 +102,7 @@ npm run typecheck # astro check
 npm run build     # 生成 dist/
 npm run preview   # 预览构建产物
 npm run links     # 探测全部链接 → link_status 表，安全的永久重定向顺带改库
-npm run icons     # 抓 favicon 到 public/icons/（--force 强制重试）
+npm run icons     # 抓 favicon → Supabase Storage 桶 icons（--force 强制重试，--push 只推本地已有文件）
 ```
 
 ## 环境变量
@@ -133,6 +133,8 @@ src/
     ai-draft.mjs       AI 生成：提示词组装、输出解析与词表过滤、与表单合并
     dev-task.mjs       长任务状态机（步骤 / 子项进度 / 日志 / 结果）
     icon-cache.mjs     图标失败缓存：取不到的域名 30 天内不重试
+    storage.mjs        Supabase Storage 封装：图标上传 / 公开地址 / 下载（不带 node 内建）
+    icon-sync.mjs      构建期把库里引用的图标从 Storage 下到 public/icons/（派生物，git-ignored）
   components/Catalog.astro  首页与分区页共用骨架：导航、chips、卡片墙、dev 表单
   client/filter.ts     分面筛选、搜索高亮、排序、最近 7 天、待看开关
   pages/               index.astro、[section].astro（9 页，路由由 taxonomy 生成）、links.json.ts、rss.xml.ts
@@ -165,7 +167,7 @@ scripts/               validate.mjs（check）、fetch-icons.mjs、check-links.m
 
 **这套东西只在 `npm run dev` 里存在**：`middleware.ts` 的 `/api/*` 首行 `if (!import.meta.env.DEV) return next()`，前端逻辑用 `import.meta.env.DEV` + 动态 `import('../dev/editor')` 包着，构建时整块摇掉（已核对 `dist/` 无痕迹）。线上是纯静态只读站。
 
-新域名的图标在发布时补抓：取不到的域名在 `icons` 表里记时间（`file` 为空），30 天内不重试；抓到的文件要随仓库提交，CI 的 `data.test` 会校验 `icons` 表引用的文件存在。
+图标字节存在 Supabase Storage 桶 `icons`（public read），仓库里没有图片文件：`npm run icons` 抓取并上传，`npm run sync`（dev/build/check 之前自动跑）把库里引用、本地缺失的图标下到 `public/icons/`。产物里是普通静态文件，线上不依赖任何外部服务。取不到的域名在 `icons` 表里记时间（`file` 为空），30 天内不重试；Storage 里某个对象丢了，页面退化成首字母占位，不会卡住构建。
 
 ## 浏览页上的小工具（线上也有）
 
@@ -174,7 +176,7 @@ scripts/               validate.mjs（check）、fetch-icons.mjs、check-links.m
 
 ## 部署
 
-推到 `master` 即触发 `.github/workflows/deploy.yml`（`npm ci` → `check` → `test` → `typecheck` → 抓图标 → `build` → Pages）。仓库 Settings → Pages 的 Source 需为 "GitHub Actions"。
+推到 `master` 即触发 `.github/workflows/deploy.yml`（`npm ci` → `check`（内含 `sync`：拉数据 + 下图标）→ `test` → `typecheck` → `build` → Pages）。CI 只读不写：抓图标与写库只在本机 dev 做。仓库 Settings → Pages 的 Source 需为 "GitHub Actions"。
 
 站点：<https://Su-luoya.github.io/resource-collector/>（`astro.config.mjs` 的 `site` / `base` 已按此配置，换仓库名要同步改）。
 

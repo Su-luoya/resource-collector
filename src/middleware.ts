@@ -38,7 +38,6 @@ import type { LinkStatus, Resource } from './lib/links';
 const ROOT = process.cwd();
 const CACHE_REL = '.cache/links.json';
 const PUBLISHED_REL = '.cache/published.json';
-const ICONS_DIR = 'public/icons';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
 /** 抓页面时只留这么多字：够抽 title / description，又不至于把整篇正文读进内存 */
 const PAGE_LIMIT = 400_000;

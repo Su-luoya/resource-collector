@@ -57,6 +57,7 @@ test('发布：校验不过就中止；过了则同步、补图标并触发一�
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
+    'src/lib/storage.mjs',
     'src/lib/link-maintenance.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',

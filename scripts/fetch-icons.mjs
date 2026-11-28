@@ -1,26 +1,32 @@
 #!/usr/bin/env node
-// 把每个域名的 favicon 下载到 public/icons/，并把「域名 → 文件」写进云端 icons 表。
-// 好处：页面不依赖第三方图标服务（国内访问稳定），也不怕源站删图标。
-// 用法：node scripts/fetch-icons.mjs [--force]
+// 把每个域名的 favicon 抓下来传到 Supabase Storage（桶 icons），并把「域名 → 对象」写进云端 icons 表。
+// 好处：页面不依赖第三方图标服务（国内访问稳定），也不怕源站删图标；仓库里不存图片文件。
+// 用法：node scripts/fetch-icons.mjs [--force] [--push]
 //
 // 键是「规范化域名」（去掉 www.、小写，见 src/lib/link-data.mjs 的 hostKey），
 // 与页面查图标用的是同一把键——所以 www.nber.org 与 nber.org 共用一份图标。
 // 取不到的域名记下时间，30 天内不再重试：发布里最贵的时间都花在这上面。
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+//
+// 字节存 Storage，`npm run sync`（构建前）再把缺的从 Storage 下到 public/icons/。
+// 所以这里写成两件事：抓（含上传）与 --push（只把本地已有文件推到 Storage，不联网抓站）。
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { hostKey } from '../src/lib/link-data.mjs';
 import { describeMiss, isRetryable, MISS_DAYS } from '../src/lib/icon-cache.mjs';
-import { clientFor, readCache, refreshCache } from '../src/lib/cloud-sync.mjs';
+import { clientFor, readCache, refreshCache, storageFor } from '../src/lib/cloud-sync.mjs';
+import { objectName } from '../src/lib/storage.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const force = process.argv.includes('--force');
+const push = process.argv.includes('--push');
 const cache = readCache();
 const rows = cache.links;
 const outDir = resolve(root, 'public/icons');
 mkdirSync(outDir, { recursive: true });
 
 const client = clientFor({ write: true });
+const storage = storageFor({ write: true });
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -50,8 +56,12 @@ const EXT = {
   'image/gif': 'gif',
   'image/webp': 'webp',
 };
+/** 与 EXT 反着走：--push 只有本地文件，类型得从扩展名推 */
+const MIME = Object.fromEntries(Object.entries(EXT).map(([mime, ext]) => [ext, mime]));
 
 const slug = (host) => host.replace(/[^a-z0-9.-]/gi, '_');
+const localPath = (file) => resolve(root, 'public', file);
+const mimeOf = (name) => MIME[name.split('.').pop()?.toLowerCase()] ?? 'application/octet-stream';
 
 // 现有映射与失败记录都从库里读：换台机器、换次 CI 都接着上次的进度走
 const iconRows = await client.listIcons();
@@ -60,6 +70,25 @@ const misses = {};
 for (const row of iconRows) {
   if (row.file) map[row.host] = row.file;
   else if (row.missed_at) misses[row.host] = row.missed_at;
+}
+
+// --push：把本地已有图标一次性推到 Storage（首次迁移、换桶后用），不联网抓站
+if (push) {
+  let ok = 0;
+  const missing = [];
+  for (const [key, file] of Object.entries(map)) {
+    const source = localPath(file);
+    if (!existsSync(source)) {
+      missing.push(key);
+      continue;
+    }
+    const name = objectName(file);
+    await storage.upload(name, readFileSync(source), mimeOf(name));
+    ok++;
+  }
+  console.log(`✓ 已上传 ${ok} 个本地图标 → Storage`);
+  if (missing.length) console.log(`注意：${missing.length} 个域名表里有映射但本地没文件：${missing.join(', ')}`);
+  process.exit(0);
 }
 
 async function get(url, timeout = 10_000) {
@@ -72,18 +101,17 @@ async function get(url, timeout = 10_000) {
   }
 }
 
-/** 下载并落盘，文件名只由规范化域名决定；类型/体积不合适就放弃 */
+/** 下载并校验，文件名只由规范化域名决定；类型/体积不合适就放弃。返回待上传的字节 */
 async function save(key, url) {
   const res = await get(url);
   if (!res.ok) return null;
   const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const ext = EXT[type];
   if (!ext) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 70 || buf.length > 300_000) return null; // 太小是占位图/空文件，太大不是图标
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length < 70 || bytes.length > 300_000) return null; // 太小是占位图/空文件，太大不是图标
   const name = `${slug(key)}.${ext}`;
-  writeFileSync(resolve(outDir, name), buf);
-  return `icons/${name}`;
+  return { file: `icons/${name}`, name, bytes, type };
 }
 
 async function discover(hostname, key) {
@@ -116,35 +144,50 @@ async function discover(hostname, key) {
   return null;
 }
 
-const queue = [...hosts.keys()];
-const planned = queue.filter((key) => {
-  const existing = map[key];
-  if (!force && existing && existsSync(resolve(root, 'public', existing))) return false;
-  return true;
-});
-const toFetch = planned.filter((key) => force || !misses[key] || isRetryable(misses[key]));
+// 待抓 = 表里没有、或本地缓存缺文件（缺文件时先试着从 Storage 补，补不到才去抓源站）
+// 冷却期内的不算待抓：这里一次性报出来，进度里的「N 个待抓」才和实际会动的行数对得上
+const todo = [...hosts.keys()].filter((key) => force || !map[key] || !existsSync(localPath(map[key])));
+const toFetch = [];
+for (const key of todo) {
+  if (!force && misses[key] && !isRetryable(misses[key])) {
+    console.log(`· 跳过 ${key}（${describeMiss(misses[key])}，${MISS_DAYS} 天内不重试）`);
+    continue;
+  }
+  toFetch.push(key);
+}
 // 这行给发布进度用：前端能算出「3/24」而不用猜
 console.log(`计划：共 ${hosts.size} 个域名，${toFetch.length} 个待抓`);
 
 async function worker() {
-  while (planned.length) {
-    const key = planned.shift();
+  while (toFetch.length) {
+    const key = toFetch.shift();
     const existing = map[key];
-    if (!force && existing && existsSync(resolve(root, 'public', existing))) {
-      console.log(`· 已有 ${key}`);
-      continue;
+
+    // 表里已有映射，只是本地缓存没了：从 Storage 补回，不必再打扰源站
+    if (existing && !force) {
+      const bytes = await storage.download(existing).catch(() => null);
+      if (bytes) {
+        writeFileSync(localPath(existing), bytes);
+        console.log(`✓ ${key} 从 Storage 补回本地`);
+        continue;
+      }
     }
-    if (!force && misses[key] && !isRetryable(misses[key])) {
-      console.log(`· 跳过 ${key}（${describeMiss(misses[key])}，${MISS_DAYS} 天内不重试）`);
-      continue;
-    }
-    const saved = await discover(hosts.get(key), key);
+
+    const found = await discover(hosts.get(key), key);
     const now = new Date().toISOString();
-    if (saved) {
-      map[key] = saved;
+    if (found) {
+      // 先上传再写表：表里的映射必须对得上 Storage 里真实存在的对象
+      try {
+        await storage.upload(found.name, found.bytes, found.type);
+      } catch (error) {
+        console.log(`✗ ${key} 抓到但上传失败，下次重试：${error.message}`);
+        continue; // 不写表、不记冷却，下回再来
+      }
+      writeFileSync(localPath(found.file), found.bytes);
+      map[key] = found.file;
       delete misses[key];
-      console.log(`✓ ${key} → ${saved}`);
-      await client.upsertIcons([{ host: key, file: saved, missed_at: null }]);
+      console.log(`✓ ${key} → ${found.file}`);
+      await client.upsertIcons([{ host: key, file: found.file, missed_at: null }]);
     } else {
       delete map[key];
       misses[key] = now;
@@ -160,7 +203,9 @@ for (const key of Object.keys(map)) if (!hosts.has(key)) delete map[key];
 
 await refreshCache(client);
 
-const referenced = new Set(Object.values(map).map((path) => path.replace(/^icons\//, '')));
-const orphans = readdirSync(outDir).filter((name) => !referenced.has(name));
-if (orphans.length) console.log(`\n注意：public/icons 里有 ${orphans.length} 个没人引用的文件：${orphans.join(', ')}`);
-console.log(`\n完成：${Object.keys(map).length}/${hosts.size} 个域名有本地图标 → icons 表`);
+// public/icons 是完全派生的缓存：清掉没人引用的文件，免得它们混进 dist
+const referenced = new Set(Object.values(map).map((path) => objectName(path)));
+const orphans = readdirSync(outDir).filter((name) => !referenced.has(name) && name !== '.gitkeep');
+for (const name of orphans) unlinkSync(resolve(outDir, name));
+if (orphans.length) console.log(`\n已清理 ${orphans.length} 个没人引用的本地图标：${orphans.join(', ')}`);
+console.log(`\n完成：${Object.keys(map).length}/${hosts.size} 个域名有图标 → icons 表 + Storage`);

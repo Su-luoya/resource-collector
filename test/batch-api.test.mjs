@@ -41,6 +41,7 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
+    'src/lib/storage.mjs',
     'src/lib/link-maintenance.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',

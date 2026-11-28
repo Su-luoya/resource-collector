@@ -11,5 +11,8 @@ raw/
 .env
 .env.*
 
+# 图标是派生物：字节存 Supabase Storage，npm run sync 下到 public/icons/
+public/icons/
+
 # pi 的本地 skills 检出，不入库
 .pi/

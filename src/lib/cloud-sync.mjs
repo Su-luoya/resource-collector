@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from './cloud.mjs';
+import { createStorage } from './storage.mjs';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -43,6 +44,19 @@ export const clientFor = ({ write = false } = {}) => {
     );
   }
   return createClient({ url, key });
+};
+
+/** 图标字节的 Storage 客户端：同样的 key 规则，写要 secret，读用 anon（public read 桶） */
+export const storageFor = ({ write = false } = {}) => {
+  const env = readEnv();
+  const url = env.SUPABASE_URL;
+  const key = write ? env.SUPABASE_SECRET_KEY : env.SUPABASE_ANON_KEY || env.SUPABASE_SECRET_KEY;
+  if (!url || !key) {
+    throw new Error(
+      write ? '缺少 SUPABASE_URL 或 SUPABASE_SECRET_KEY（写在 .env 里，CI 里用 secrets 注入）' : '缺少 SUPABASE_URL 或 SUPABASE_ANON_KEY',
+    );
+  }
+  return createStorage({ url, key });
 };
 
 /** 库里三张表 → 一份缓存对象；status 按 url 建索引，icons 按 host 建映射，与旧数据文件形状一致 */

@@ -79,13 +79,21 @@ test('每条资源的分区与分类都落在词表里（越界构建就会炸�
   }
 });
 
-test('图标表的键是规范化域名，且文件都在 public/icons 下', () => {
+test('图标表的键是规范化域名，且指向 public/icons 下的扁平文件', () => {
   for (const [key, path] of Object.entries(icons)) {
     assert.ok(!key.startsWith('www.'), `键没规范化：${key}`);
     assert.equal(key, key.toLowerCase(), `键没小写：${key}`);
     assert.ok(path.startsWith('icons/'), `不是 public 下的相对路径：${path}`);
-    assert.ok(existsSync(resolve(root, 'public', path)), `图标文件不存在：${path}`);
+    assert.ok(!path.slice('icons/'.length).includes('/'), `图标不能放子目录：${path}`);
   }
+});
+
+test('图标字节存在 Storage，本地文件由 npm run sync 落盘', (t) => {
+  // 缺文件只提示不失败：图标缺失时页面退化成首字母占位，不该因此卡住构建
+  const missing = Object.entries(icons)
+    .filter(([, path]) => !existsSync(resolve(root, 'public', path)))
+    .map(([host]) => host);
+  if (missing.length) t.diagnostic(`public/icons 缺 ${missing.length} 个文件（npm run sync 会从 Storage 补）：${missing.join(', ')}`);
 });
 
 test('图标表里没有数据里已删掉的域名', (t) => {

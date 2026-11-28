@@ -20,7 +20,7 @@
        - 关键结论
    ```
 2. `desc` 只写用户能验证的事实（官网自述、实际页面内容）。**不要编造**作者、机构、功能。抓不到页面内容就先问用户，或写保守描述。
-3. 新域名的图标由发布时的 `npm run icons` 或 CI 自动补，不需要手动跑。
+3. 新域名的图标由发布时的 `npm run icons` 抓取并传进 Supabase Storage（桶 `icons`，public read）；构建前 `npm run sync` 把缺的下到 `public/icons/`（git-ignored）。**图标是数据，仓库里不存图片文件**，也不要再提交 `public/icons/` 下的任何东西。
 4. `npm run check && npm run build` 验证，然后 commit + push 代码（数据不在 git 里）。改完数据后点「发布」或跑 `gh workflow run deploy.yml` 让线上更新。
 
 ## 不要做
@@ -34,7 +34,7 @@
 - 笔记 `note` 只渲染 Markdown 子集，渲染前先转义 HTML、链接只认 http(s)；不要为了排版去引 markdown 库或写 HTML。
 - 采集/一键收录只调 `api/meta`（响应里带 `rules` 落点建议），建议来自 `src/lib/link-rules.mjs` 的域名规则表（命中才给分区与分类，认不出就是空）；「落点建议」不能猜。
 - 不改 `astro.config.mjs` 的 `base`，除非仓库改名（改了两处要同步：`site` + `base`）。
-- 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件），字体走系统栈。
+- 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件，提交前由 `npm run sync` 从 Storage 落盘），字体走系统栈。
 - dev 编辑层必须留在 dev 里：markup 走 `import.meta.env.DEV` 条件渲染、逻辑走动态 `import('../dev/editor')`（`task` / `toast` / `command-palette` 同理，由 editor 再动态引入），`npm run build` 后 `dist/` 里不许出现 `dev-dialog` / `api/edit` 等任何痕迹（已验证）。
 - 不把这套接进线上 Pages：那是纯静态站，没有进程可写盘。线上只读，改数据只能在本机 dev 或在 Supabase 表格里改（改完触发一次重建）。
 - 写接口只放 `src/middleware.ts` 且首行 `if (!import.meta.env.DEV) return next()`；不要新增其他能写盘的入口。
@@ -62,6 +62,7 @@
 - `src/lib/link-maintenance.mjs` — 链接探测、永久重定向自动修复与维护待办，周检脚本和 dev 单条复查共用
 - `src/lib/link-quality.mjs` — 新增/编辑时的相似重复候选、跟踪参数清理建议，以及全库查重 `scanDuplicates`（都只提示，不改数据）
 - `src/lib/icon-cache.mjs` — 图标失败缓存规则（取不到图标的域名 30 天内不重试，`--force` 可强刷）
+- `src/lib/storage.mjs` / `icon-sync.mjs` — 图标字节存 Supabase Storage 桶 `icons`（public read）；`icon-sync.mjs` 在 `npm run sync` 里把库里引用的图标下到 `public/icons/`（git-ignored 派生物）。`fetch-icons.mjs --push` 把本地已有文件一次性推进桶里
 - `src/lib/ai-draft.mjs` — 「AI 生成标题/简介/分类」的提示词、输出解析与词表过滤、与表单合并（纯函数，模型调用在 middleware 的 `api/ai-draft`，走本机 `pi` 子进程）
 - `src/lib/link-rules.mjs` — 采集用的域名规则表（`suggestFor`）：arxiv/ssrn/nber 等 → `lit/stream`、scholar.google → `lit/search`、fred/kaggle → `data`、pypi/npm 等注册表 → `tools/lib`、substack/medium → `tools/blog`，认不出返回 `null`；规则命中只给分区与分类，不给简介
 - `src/lib/bookmarks-html.mjs` — 浏览器书签 HTML 的解析（`parseBookmarks` → `{ items, skipped, total }`）与标题清洗（`tidyTitle`），导入前只产草稿不写盘

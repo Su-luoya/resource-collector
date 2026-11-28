@@ -57,6 +57,7 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
+    'src/lib/storage.mjs',
     'src/lib/link-maintenance.mjs',
     'src/lib/link-quality.mjs',
     'src/lib/dev-task.mjs',
