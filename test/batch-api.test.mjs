@@ -2,7 +2,7 @@
 //
 // 覆盖 api/duplicates（相似候选 + 跟踪参数建议）、api/batch-meta（只抓草稿不写盘）、
 // api/batch-add（整批校验后一次写入）与 api/publish-preview（发布前结构化差异）。
-// batch-meta 的抓取分支需要联网，这里只测「被跳过」的分支与上限，全部离线。
+// 所有抓取与云端写入都指向本地 fixture。
 import { test } from 'node:test';
 import { startFakeCloud } from './helpers/cloud.mjs';
 import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
@@ -38,6 +38,7 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
   for (const file of [
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
+    'src/lib/http-body.mjs',
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
@@ -117,6 +118,10 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.match(skippedOnly.skipped[0].reason, /空白/);
     assert.deepEqual(skippedOnly.skipped.slice(1).map((item) => item.reason), ['库中已存在', '本批重复']);
 
+    const failedMeta = await runTask(server.address.port, 'batch-meta', { urls: [cloud.url + '/missing'] });
+    assert.match(failedMeta.drafts[0].hint, /404/);
+    assert.equal(failedMeta.drafts[0].note, undefined, '抓取提示不是用户笔记');
+
     const tooMany = await api('batch-meta', { urls: Array.from({ length: 21 }, (_, i) => `https://x${i}.example.com`) });
     assert.equal(tooMany.http, 400);
     assert.match(tooMany.message, /最多 20 条/);
@@ -151,9 +156,12 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.match(missingDesc.message, /简介不能为空/);
 
     const written = await api('batch-add', {
-      rows: [draft('https://c.example.com'), draft('https://d.example.com')],
+      rows: [draft('https://c.example.com', { note: '手写笔记', read: false }), draft('https://d.example.com')],
     });
     assert.equal(written.ok, true, written.message);
+    const saved = readCache().links.find((row) => row.url === 'https://c.example.com/');
+    assert.equal(saved.note, '手写笔记');
+    assert.equal(saved.read, false);
     assert.deepEqual(urls(), [
       'https://a.example.com/p',
       'https://b.example.com/',
@@ -181,6 +189,21 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.equal(after.changed[0].before.url, 'https://b.example.com/');
     assert.equal(after.changed[0].after.url, 'https://b2.example.com/');
     assert.deepEqual(after.removed, []);
+
+    await t.test('书签预览只把分类齐全的草稿标为可导入；确认不需要原文件', async () => {
+      const html = '<DT><A HREF="https://arxiv.org/abs/1?a=1&amp;b=2">论文</A>' +
+        '<DT><A HREF="https://github.com/example/tool">项目</A>';
+      const imported = await api('import-bookmarks', { html });
+      assert.equal(imported.ok, true);
+      assert.equal(urls().length, 4, '预览不写库');
+      const saved = await api('import-bookmarks', { commit: true, rows: [imported.drafts[0]] });
+      assert.equal(saved.ok, true, saved.message);
+      assert.deepEqual(imported.drafts.map((r) => r.ready), [true, false]);
+      const paper = readCache().links.find((r) => r.url === 'https://arxiv.org/abs/1?a=1&b=2');
+      assert.equal(paper?.read, false);
+      assert.deepEqual(paper.section, ['lit']);
+      assert.equal((await api('import-bookmarks', { commit: true, rows: [imported.drafts[1]] })).http, 400);
+    });
   } finally {
     await server.stop();
   }

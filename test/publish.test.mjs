@@ -54,6 +54,7 @@ test('发布：校验不过就中止；过了则同步、补图标并触发一�
   for (const file of [
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
+    'src/lib/http-body.mjs',
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
@@ -88,6 +89,8 @@ test('发布：校验不过就中止；过了则同步、补图标并触发一�
   cloud.tables.links.delete('https://c.example.com/');
 
   // 2) 正常发布：三步都过，gh 收到的是 workflow run deploy.yml
+  cloud.tables.icons.set('a.example.com', { host: 'a.example.com', file: 'icons/a.ico' });
+  writeFileSync('public/icons/a.ico', 'fixture');
   const seen = [];
   const done = await runTask(port, 'publish', {}, { onSnapshot: (task) => seen.push(task.status) });
   assert.equal(done.ok, true, done.message);
@@ -97,5 +100,33 @@ test('发布：校验不过就中止；过了则同步、补图标并触发一�
   assert.match(calls, /^workflow run deploy\.yml --ref master$/m);
   // 发布成功会记下「已上线」的快照，下次用它算差异
   assert.ok(existsSync('.cache/published.json'));
+  const snapshot = JSON.parse(readFileSync('.cache/published.json', 'utf8'));
+  const get = async (route) => (await fetch(`http://127.0.0.1:${port}/api/${route}`)).json();
+  await t.test('发布快照包括云端图标；仅图标变化也能发布', async () => {
+    assert.deepEqual(snapshot.icons, { 'a.example.com': 'icons/a.ico' });
+    assert.equal((await get('status')).dirty, false);
+    writeFileSync('.cache/published.json', JSON.stringify({ ...snapshot, icons: {} }));
+    assert.deepEqual((await get('publish-preview')).icons, ['+ a.example.com']);
+    assert.equal((await get('status')).dirty, true);
+  });
+  await t.test('已有链接第一次体检也进预览和待发布状态', async () => {
+    writeFileSync('.cache/published.json', JSON.stringify(snapshot));
+    const url = 'https://a.example.com/p';
+    cloud.tables.link_status.set(url, { url, status: 'ok', code: 200, checked: '2026-01-01' });
+    await refreshCache();
+    assert.equal((await get('publish-preview')).statusChanged, true);
+    assert.equal((await get('status')).dirty, true);
+  });
+  await t.test('远端拒绝触发不改快照，同一份数据可以重新触发', async () => {
+    const baseline = readFileSync('.cache/published.json', 'utf8');
+    writeFileSync(fakeGh, '#!/bin/sh\nexit 1\n');
+    const refused = await runTask(port, 'publish');
+    assert.equal(refused.ok, false);
+    assert.equal(readFileSync('.cache/published.json', 'utf8'), baseline);
+    writeFileSync(fakeGh, '#!/bin/sh\nexit 0\n');
+    assert.equal((await runTask(port, 'publish')).ok, true);
+    assert.equal((await get('status')).dirty, false);
+    assert.equal((await runTask(port, 'publish')).ok, true);
+  });
   assert.equal(readCache().links.length, 2);
 });

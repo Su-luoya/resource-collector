@@ -14,12 +14,14 @@ export const setupImport = ({ send }: Pick<Deps, 'send'>) => {
   let importRows: ImportDraft[] = [];
 
   const renderImport = (reply: ImportReply) => {
-    importRows = (reply.drafts ?? []).filter((draft) => draft.section.length > 0);
+    const drafts = reply.drafts ?? [];
+    importRows = drafts.filter((draft) => draft.ready);
     const skipped = reply.skipped ?? [];
-    const needSection = (reply.drafts ?? []).length - importRows.length;
-    importSummary.textContent = `文件里共 ${reply.total ?? 0} 条链接：可导入 ${importRows.length} 条，库里已有或无效 ${skipped.length} 条${needSection ? `，${needSection} 条没认出分区（先去「＋ 新增」里逐条收）` : ''}。导入的条目都会标成「待看」，简介先写成占位文字。`;
+    const incomplete = drafts.length - importRows.length;
+    const total = reply.total ?? drafts.length;
+    importSummary.textContent = `文件里共 ${total} 条链接：可导入 ${importRows.length} 条，重复或无效 ${total - drafts.length} 条${incomplete ? `，${incomplete} 条需补分区或分类（去「＋ 新增」里逐条收）` : ''}。导入的条目都会标成「待看」，简介先写成占位文字。`;
     importList.replaceChildren();
-    for (const draft of (reply.drafts ?? []).slice(0, 200)) {
+    for (const draft of drafts.slice(0, 200)) {
       const line = document.createElement('p');
       const text = document.createElement('span');
       const host = (() => {
@@ -29,8 +31,8 @@ export const setupImport = ({ send }: Pick<Deps, 'send'>) => {
           return '';
         }
       })();
-      text.textContent = `${draft.section.length ? '✓' : '·'} ${draft.title} — ${host}${draft.folder ? `（${draft.folder}）` : ''} `;
-      if (!draft.section.length) text.className = 'dev-skip';
+      text.textContent = `${draft.ready ? '✓' : '·'} ${draft.title} — ${host}${draft.folder ? `（${draft.folder}）` : ''} `;
+      if (!draft.ready) text.className = 'dev-skip';
       line.append(text);
       line.append(externalLink('打开', draft.url));
       importList.append(line);

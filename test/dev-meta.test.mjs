@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { readPrefix } from '../src/lib/http-body.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { clean, normUrl, decodeEntities, extractMeta } = await import(
@@ -10,6 +11,20 @@ const { clean, normUrl, decodeEntities, extractMeta } = await import(
 );
 
 const page = (head) => `<html><head>${head}</head><body>x</body></html>`;
+
+test('到字节上限即取消下载，不等待后续响应', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(Uint8Array.of(1, 2));
+      controller.enqueue(Uint8Array.of(3, 4));
+    },
+    cancel() { cancelled = true; },
+  });
+  assert.deepEqual(await readPrefix(new Response(stream), 3), Buffer.from([1, 2, 3]));
+  assert.equal(cancelled, true);
+  assert.deepEqual(await readPrefix(new Response(null), 3), Buffer.alloc(0));
+});
 
 test('clean 折叠空白、去首尾空格', () => {
   assert.equal(clean('  a\n\t b   c '), 'a b c');

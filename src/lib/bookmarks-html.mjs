@@ -26,7 +26,7 @@ export const parseBookmarks = (html) => {
     total++;
     const attrs = match[2] || '';
     const href = /\bhref\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? /\bhref\s*=\s*'([^']*)'/i.exec(attrs)?.[1] ?? '';
-    const target = /^https?:/i.test(href) ? normUrl(href) : { url: '' };
+    const target = /^https?:/i.test(href) ? normUrl(decodeEntities(href)) : { url: '' };
     if (!target.url) {
       skipped++;
       continue;

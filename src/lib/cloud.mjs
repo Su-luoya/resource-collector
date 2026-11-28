@@ -120,25 +120,27 @@ export const createClient = ({ url, key, fetchImpl = fetch, schema = 'public' })
     const rows = [];
     for (;;) {
       const page = await request('GET', `/${table}?select=*&order=${key}.asc&limit=${PAGE}&offset=${rows.length}`);
-      const list = Array.isArray(page) ? page : [];
-      if (!list.length) return rows;
-      rows.push(...list);
+      if (!Array.isArray(page)) throw new Error(`${table} 读取失败：预期返回数组`);
+      if (!page.length) return rows;
+      rows.push(...page);
       // 服务端要是连 offset 也不认，rows 会一直涨：宁可报错，也不能把半张表当成整表
       if (rows.length > MAX_ROWS) throw new Error(`${table} 分页没有前进，已取到 ${rows.length} 行`);
     }
   };
 
   return {
-    /** 一批 upsert：保存时通常只有一行变了，别为一行等三四个往返 */
-    upsertLinks: async (links) => {
+    // 新增不用 upsert：缓存看不到的云端新行不能被覆盖。
+    insertLinks: async (links) => {
       if (!links.length) return;
-      await request('POST', '/links?on_conflict=url', { body: links.map(toRow), prefer: 'resolution=merge-duplicates,return=minimal' });
+      await request('POST', '/links', { body: links.map(toRow), prefer: 'return=minimal' });
     },
-    upsertLink: async (link) => {
-      await request('POST', '/links?on_conflict=url', { body: toRow(link), prefer: 'resolution=merge-duplicates,return=minimal' });
+    updateLink: async (url, patch) => {
+      const updated = await request('PATCH', `/links?url=eq.${encodeURIComponent(url)}&select=url`, { body: patch, prefer: 'return=representation' });
+      if (updated?.length !== 1) throw new Error(`没有更新到原记录：${url}`);
     },
     deleteLink: async (url) => {
-      await request('DELETE', `/links?url=eq.${encodeURIComponent(url)}`, { prefer: 'return=minimal' });
+      const deleted = await request('DELETE', `/links?url=eq.${encodeURIComponent(url)}&select=url`, { prefer: 'return=representation' });
+      if (deleted?.length !== 1) throw new Error(`没有删除到原记录：${url}`);
     },
     listLinks: async () => (await selectAll('links')).map(fromRow),
     listStatus: async () => (await selectAll('link_status')).map(fromStatusRow),

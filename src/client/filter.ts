@@ -32,7 +32,7 @@ const recentToggle = document.getElementById('recent-toggle') as HTMLButtonEleme
 const RECENT_DAYS = 7;
 const recentCutoff = (() => {
   const day = new Date();
-  day.setDate(day.getDate() - RECENT_DAYS);
+  day.setDate(day.getDate() - RECENT_DAYS + 1);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 })();
@@ -110,7 +110,7 @@ function reorder() {
  * 侧栏分区、分类 chip、工具条的「/ N 条」全是服务端渲染的静态数：dev 里删/加了卡片
  * 它们不会自己变，不重算就会出现「显示 109 / 110 条」这种自相矛盾。
  */
-function syncCounts() {
+function syncCounts(removed: HTMLAnchorElement) {
   const live = liveCards();
   const totalEl = document.getElementById('total');
   if (totalEl) totalEl.textContent = String(live.length);
@@ -118,9 +118,8 @@ function syncCounts() {
     const n = link.querySelector('.n');
     if (!n) continue;
     const id = link.dataset.section || '';
-    n.textContent = String(
-      !id || id === 'all' ? live.length : live.filter((card) => (card.dataset.section || '').split(' ').includes(id)).length,
-    );
+    // 分区页只渲染本站的一部分；全站导航只能从原有计数扣掉被删的条目。
+    if (id === 'all' || removed.dataset.section?.split(' ').includes(id)) n.textContent = String(Number(n.textContent) - 1);
   }
   for (const chip of chips) {
     const n = chip.querySelector('.n');
@@ -160,7 +159,6 @@ function apply() {
   paint(highlightPattern(parsed.text));
 
   shown.textContent = String(n);
-  syncCounts();
   empty.hidden = n > 0;
   copyBtn.hidden = n === 0;
   copyBtn.textContent = `复制这 ${n} 条`;
@@ -168,7 +166,7 @@ function apply() {
   copyFallback.hidden = true;
 
   const recentTotal = recentTotalOf();
-  recentBar.hidden = recentTotal === 0;
+  recentBar.hidden = recentTotal === 0 && !recentOnly;
   recentToggle.innerHTML = recentOnly
     ? `正在只看最近 ${RECENT_DAYS} 天的 <strong>${recentTotal}</strong> 条 · 显示全部`
     : `最近 ${RECENT_DAYS} 天新增 <strong>${recentTotal}</strong> 条 · 只看这些`;
@@ -192,6 +190,7 @@ function apply() {
   const params = new URLSearchParams();
   for (const axis of axes) if (picked[axis].size) params.set(axis, [...picked[axis]].join(','));
   if (q) params.set('q', q);
+  if (recentOnly) params.set('recent', '1');
   const frag = params.toString();
   history.replaceState(null, '', frag ? `#${frag}` : location.pathname + location.search);
 
@@ -212,6 +211,7 @@ function readHash() {
       (params.get(axis) || '').split(',').filter((id) => id && known[axis].has(id)),
     );
   }
+  recentOnly = params.get('recent') === '1';
   query = params.get('q') || new URLSearchParams(location.search).get('q') || '';
   qInput.value = query;
   apply();
@@ -279,7 +279,8 @@ window.addEventListener('hashchange', readHash);
 function move(delta: number) {
   const list = visible();
   if (!list.length) return;
-  activeIndex = (activeIndex + delta + list.length) % list.length;
+  if (activeIndex < 0) activeIndex = delta > 0 ? 0 : list.length - 1;
+  else activeIndex = (activeIndex + delta + list.length) % list.length;
   cards.forEach((card) => card.classList.remove('is-active'));
   const target = list[activeIndex];
   target.classList.add('is-active');
@@ -382,7 +383,10 @@ prefersDark.addEventListener('change', () => {
 
 // dev 编辑层删/改了卡片就喊一声：数字与排序跟着重算，不用整页刷新。
 // 放进 DEV 判断里，构建时整段被摇掉，dist 里不留痕迹。
-if (import.meta.env.DEV) document.addEventListener('dev:cards-changed', apply);
+if (import.meta.env.DEV) document.addEventListener('dev:cards-changed', (event) => {
+  syncCounts((event as CustomEvent<HTMLAnchorElement>).detail);
+  apply();
+});
 
 readHash();
 

@@ -33,7 +33,7 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
     publishBtn.textContent = '发布';
     const notes: string[] = [];
     if (behind) notes.push(`落后 origin/${branch} ${behind} 个提交，请先在终端同步`);
-    if (dirty) notes.push(added || removed || changed ? `未发布：+${added} −${removed} ~${changed}` : '数据文件有未提交改动');
+    if (dirty) notes.push(added || removed || changed ? `未发布：+${added} −${removed} ~${changed}` : '有未发布的体检或图标变化');
     if (ahead) notes.push(`${ahead} 个本地提交尚未推送`);
     if (ahead === null) notes.push(`没有 origin/${branch} 的本地记录`);
     const summary = status.ok ? notes.join('；') || `已同步 ${branch}@${head}` : status.message || '读不到状态';
@@ -48,9 +48,7 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
     const changed = preview?.changed ?? [];
     const icons = preview?.icons ?? [];
     const statusChanged = Boolean(preview?.statusChanged);
-    const counts = preview
-      ? `资源 +${added.length} −${removed.length} ~${changed.length}`
-      : '没有资源数据改动';
+    const counts = `资源 +${added.length} −${removed.length} ~${changed.length}`;
     publishSummary.textContent = `目标：origin/${status.branch ?? '?'} · ${counts}`;
     publishList.replaceChildren();
 
@@ -86,13 +84,14 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
           item.append(name);
           const fields = [
             ['title', '标题'], ['url', 'URL'], ['desc', '简介'],
-            ['section', '分区'], ['facets', '分类'], ['added', '收录日期'],
+            ['section', '分区'], ['facets', '分类'], ['added', '收录日期'], ['note', '笔记'], ['read', '阅读状态'],
           ] as const;
           for (const [key, label] of fields) {
             if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
             const line = document.createElement('p');
             line.className = 'dev-diff-field';
-            line.textContent = `${label}：${formatValue(before[key])} → ${formatValue(after[key])}`;
+            const show = (row: Row) => key === 'read' ? (row.read === false ? '待看' : '已看') : formatValue(row[key]);
+            line.textContent = `${label}：${show(before)} → ${show(after)}`;
             item.append(line);
           }
           publishList.append(item);
@@ -124,15 +123,13 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
       publishList.append(extras);
     } else {
       const line = document.createElement('p');
-      line.textContent = '只推送当前分支已有的本地提交，不创建数据提交。';
+      line.textContent = '与上次触发重建时的数据一致；仍可重新构建。';
       publishList.append(line);
     }
 
     const plan = document.createElement('p');
     plan.className = 'dev-publish-plan';
-    plan.textContent = status.dirty
-      ? '步骤：同步云端数据 → 校验 → 补抓缺失图标 → 触发 Actions 重建。'
-      : '只触发一次重建，把当前云端数据重新发布成页面。';
+    plan.textContent = '步骤：同步并校验云端数据 → 补抓缺失图标 → 触发远端重建。本地提交不会推送。';
     publishList.append(plan);
     publishErr.hidden = true;
     publishErr.textContent = '';
@@ -149,12 +146,6 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
       const status = await send('status');
       const summary = showStatus(status);
       if (!status.ok || status.behind) return;
-      if (!status.dirty && !status.ahead) {
-        const message = '没有待发布的变化：数据和上次发布一致，也没有未推送的提交。';
-        say(message, 'idle');
-        toast(message, { tone: 'ok' });
-        return;
-      }
       const preview = status.dirty ? await send<PublishPreview>('publish-preview') : null;
       if (preview && !preview.ok) {
         say(preview.message || '读取变更预览失败', 'bad');
@@ -178,7 +169,7 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
     }
   });
 
-  /** 收尾：成功就把四步全✓留在屏幕上等你看完，失败则给可重试的 Toast */
+  /** 收尾：成功后保留步骤结果，失败则给可重试的 Toast */
   function finishPublish(snap: TaskSnapshot) {
     renderTask(publishProgress, snap);
     say(progressLine(snap), snap.status === 'ok' ? 'idle' : 'bad');
@@ -199,8 +190,8 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
     }
     publishBtn.textContent = '发布';
     const warns = res.warns ?? [];
-    say(res.message || '已推送', warns.length ? 'dirty' : 'idle');
-    toast(warns.length ? '已发布，有需要留意的改动' : '已发布', {
+    say(res.message || '已触发重建', warns.length ? 'dirty' : 'idle');
+    toast(warns.length ? '已触发重建，有提醒' : '已触发重建', {
       tone: warns.length ? 'warn' : 'ok',
       detail: warns.length ? warns.join('；') : undefined,
       timeout: warns.length ? 15_000 : 6000,
@@ -231,7 +222,7 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
   }
 
   publishConfirm.addEventListener('click', async () => {
-    // 发布完成后按钮变成「完成并刷新」：四步全✓和用时留在屏幕上，等你看完再刷新
+    // 发布完成后按钮变成「完成并刷新」，让人看完结果再刷新
     if (publishFinished) {
       location.reload();
       return;

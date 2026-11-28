@@ -9,7 +9,7 @@
 //   POST  api/edit      { action, ... }                → add | update | delete
 //   POST  api/batch-meta { urls }                      → 批量抓取草稿，不写文件
 //   POST  api/batch-add { rows }                       → 校验后一次写入整批资源
-//   POST  api/import-bookmarks { html, commit }        → 浏览器书签文件：先出草稿，确认后一次写入
+//   POST  api/import-bookmarks { html } | { commit: true, rows }        → 浏览器书签文件：先出草稿，确认后一次写入
 //   POST  api/duplicates { url, title, excludeUrl }     → 相似候选与跟踪参数清理建议
 //   GET   api/duplicates-scan                           → 全库查重：同 URL / 清参数后相同 / 同站点同名
 //   GET   api/status                                    → 数据改动与分支推送状态
@@ -20,28 +20,25 @@
 //   POST  api/batch-meta { urls }                      → 启动批量抓取任务，立即返回 { id }
 //   GET   api/task?id=…                                 → 任务进度快照；不带 id 时只列正在跑的任务
 import { defineMiddleware } from 'astro:middleware';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { validateRows, diffRows, diffRowDetails, diffIconMaps, urlKey } from './lib/link-data.mjs';
 import { clean, extractMeta, htmlToText, normUrl } from './lib/dev-meta.mjs';
+import { PAGE_LIMIT, readPrefix } from './lib/http-body.mjs';
 import { buildPrompt, mergeDraft, parseDraft } from './lib/ai-draft.mjs';
 import { datedStatus, maintenanceTasks, probeLink } from './lib/link-maintenance.mjs';
 import { cleanupUrl, findDuplicateCandidates, scanDuplicates } from './lib/link-quality.mjs';
 import { suggestFor } from './lib/link-rules.mjs';
 import { parseBookmarks, tidyTitle } from './lib/bookmarks-html.mjs';
 import { createTaskStore } from './lib/dev-task.mjs';
-import { clientFor, refreshCache } from './lib/cloud-sync.mjs';
+import { clientFor, readCache, refreshCache, writeCache } from './lib/cloud-sync.mjs';
 import { toRow } from './lib/cloud.mjs';
 import type { LinkStatus, Resource } from './lib/links';
 
 const ROOT = process.cwd();
-const CACHE_REL = '.cache/links.json';
 const PUBLISHED_REL = '.cache/published.json';
 const TAXONOMY = resolve(ROOT, 'src/data/taxonomy.json');
-/** 抓页面时只留这么多字：够抽 title / description，又不至于把整篇正文读进内存 */
-const PAGE_LIMIT = 400_000;
-
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -51,116 +48,55 @@ const json = (body: unknown, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-/**
- * 库是唯一事实源。dev 进程里留一份内存镜像，省掉每次请求都拉全表；
- * 写入一律先写库，成功后再刷新镜像与 `.cache/links.json`，失败就什么都不改。
- */
-const store: {
-  rows: Resource[];
-  statuses: Record<string, LinkStatus>;
-  icons: Record<string, string>;
-  loaded: boolean;
-} = {
-  rows: [],
-  statuses: {},
-  icons: {},
-  loaded: false,
-};
+// 每次读当前缓存：同步、周检与补图标脚本都可能在另一个进程里刷新它。
+const readRows = (): Resource[] => readCache().links;
+const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
 
-const loadStore = () => {
-  if (store.loaded) return store;
+const saved = async (client: ReturnType<typeof clientFor>, message: string) => {
   try {
-    const cache = JSON.parse(readFileSync(resolve(ROOT, CACHE_REL), 'utf8'));
-    store.rows = (cache.links ?? []) as Resource[];
-    store.statuses = (cache.status ?? {}) as Record<string, LinkStatus>;
-    store.icons = (cache.icons ?? {}) as Record<string, string>;
-    store.loaded = true;
-  } catch {
-    throw new Error('没有 .cache/links.json：先跑 npm run sync 从云端拉一次数据');
+    const data = await refreshCache(client);
+    return json({ ok: true, message, total: data.links.length });
+  } catch (error) {
+    return json({ ok: true, message: `${message}（已写入云端，但刷新缓存失败，请运行 npm run sync：${(error as Error).message}）` });
   }
-  return store;
 };
 
-const readRows = (): Resource[] => loadStore().rows;
-
-const readStatuses = (): Record<string, LinkStatus> => loadStore().statuses;
-
-/** host → Storage 对象名；只含真抓到图的域名，抓不到的记在库里的 missed_at，不进这份映射 */
-const readIcons = (): Record<string, string> => loadStore().icons;
-
-/**
- * 写库统一入口：先校验，再只写这一轮真正变了的行。
- * 不能按本地列表整表对齐：库里可能在 dev 之外被加过行，一次对齐会把它们删掉。
- * 删行同理，只删「刚才还在本地列表里、这次不在了」的那几条。
- */
-const applyEdit = async (nextRows: unknown[], message: string, sync?: { from: string; to?: string }) => {
-  const rows = nextRows as Resource[];
-  const { errors } = validateRows(rows, taxonomy());
+const applyEdit = async (rows: Resource[], changes: unknown[], message: string, previous?: Resource) => {
+  const { errors } = validateRows([...rows.filter((r) => r !== previous), ...changes], taxonomy());
   if (errors.length) return json({ ok: false, message: '校验未通过', errors }, 400);
   const client = clientFor({ write: true });
-  const before = new Map(store.rows.map((row) => [urlKey(row.url), row]));
-  const after = new Set(rows.map((row) => urlKey(row.url)));
-  const changed = rows.filter((row) => {
-    const old = before.get(urlKey(row.url));
-    return !old || JSON.stringify(toRow(old)) !== JSON.stringify(toRow(row));
-  });
-  const dropped = store.rows.filter((row) => !after.has(urlKey(row.url)));
-  // 改地址 = 新地址插一行 + 旧地址删一行；旧地址还在列表里时它已经在 dropped 里了
-  if (sync?.from && sync.from !== sync.to && !after.has(urlKey(sync.from))) dropped.push({ url: sync.from } as Resource);
   try {
-    await client.upsertLinks(changed);
-    for (const row of dropped) await client.deleteLink(row.url);
+    if (previous) {
+      const row = changes[0] as Resource;
+      const before: Record<string, unknown> = toRow(previous);
+      const patch = Object.fromEntries(Object.entries(toRow(row)).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k])));
+      // 只写改过的列：别人在云端改的笔记，不能被本地旧标题编辑一起覆盖。
+      if (Object.keys(patch).length) await client.updateLink(previous.url, patch);
+      if (urlKey(previous.url) !== urlKey(row.url)) {
+        // 外键已经跟到新主键；真正换地址时，旧体检不再适用。
+        try {
+          await client.deleteStatus(row.url);
+        } catch (error) {
+          message += `（旧地址的体检状态没清掉：${(error as Error).message}）`;
+        }
+      }
+    } else {
+      await client.insertLinks(changes);
+    }
   } catch (error) {
     return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
   }
-  // 体检状态只是行数据的副本。行已经写成，这一步再挂也只能说「状态没跟上」：
-  // 报成 502 会让人去重试一件已经完成的事，而那时旧地址已经不在了，重试只会拿到 404。
-  let warning = '';
-  if (sync && sync.from !== sync.to) {
-    try {
-      const previous = store.statuses[sync.from];
-      await client.deleteStatus(sync.from);
-      delete store.statuses[sync.from];
-      if (sync.to) {
-        delete store.statuses[sync.to];
-        if (previous && urlKey(sync.from) === urlKey(sync.to)) {
-          store.statuses[sync.to] = previous;
-          await client.upsertStatus({ ...previous, url: sync.to });
-        }
-      }
-    } catch (error) {
-      warning = `旧地址的体检状态没清掉：${(error as Error).message}`;
-    }
-  }
-  store.rows = rows;
-  await refreshCache(client);
-  return json({ ok: true, message: warning ? `${message}（${warning}）` : message, total: rows.length });
+  return saved(client, message);
 };
 
-const taxonomy = () => JSON.parse(readFileSync(TAXONOMY, 'utf8'));
-
-/** 删一条只动那一行。link_status 是 on delete cascade，库里会自己跟着删，这里只清内存镜像。 */
-const applyDelete = async (rows: Resource[], index: number) => {
-  const previous = rows[index];
+const applyDelete = async (previous: Resource) => {
   const client = clientFor({ write: true });
   try {
     await client.deleteLink(previous.url);
   } catch (error) {
     return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
   }
-  delete store.statuses[previous.url];
-  const next = rows.filter((_, i) => i !== index);
-  store.rows = next;
-  const data = await refreshCache(client);
-  // 拿重新拉回来的库对一下：DELETE 的 url 对不上时会静默地一条都不删，得告诉人
-  const left = Array.isArray(data?.links) && data.links.some((row: Resource) => urlKey(row.url) === urlKey(previous.url));
-  if (left) {
-    return json(
-      { ok: false, message: `库里那条还在，删除没生效：刷新页面重试（${previous.url}）` },
-      502,
-    );
-  }
-  return json({ ok: true, message: `已删除：${previous.title}`, total: next.length });
+  return saved(client, `已删除：${previous.title}`);
 };
 
 /** 抓一个网页的 HTML：api/meta 与 api/ai-draft 共用，失败原因统一透给前端 */
@@ -173,22 +109,12 @@ const fetchPage = async (url: string) => {
       redirect: 'follow',
       signal: ctrl.signal,
     });
-    if (!res.ok) return { ok: false, reason: `目标页返回 HTTP ${res.status}` };
     const type = (res.headers.get('content-type') ?? '').toLowerCase();
-    if (type && !/html|xml/.test(type)) return { ok: false, reason: `不是网页（${type.split(';')[0]}）` };
-    // 边读边停：有的页面正文好几 MB，读完再截会把内存和 6 秒都用光
-    const reader = res.body?.getReader();
-    if (!reader) return { ok: true, html: '', final: res.url };
-    const chunks: Buffer[] = [];
-    let size = 0;
-    while (size < PAGE_LIMIT) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(Buffer.from(value));
-      size += value.length;
+    if (!res.ok || (type && !/html|xml/.test(type))) {
+      await res.body?.cancel();
+      return { ok: false, reason: !res.ok ? `目标页返回 HTTP ${res.status}` : `不是网页（${type.split(';')[0]}）` };
     }
-    await reader.cancel();
-    return { ok: true, html: Buffer.concat(chunks).toString('utf8').slice(0, PAGE_LIMIT), final: res.url };
+    return { ok: true, html: (await readPrefix(res, PAGE_LIMIT)).toString('utf8'), final: res.url };
   } catch (error) {
     const e = error as { name?: string; message?: string };
     return { ok: false, reason: e?.name === 'AbortError' ? '抓取超时（6 秒）' : `抓取失败：${e?.message ?? e}` };
@@ -293,6 +219,7 @@ const BATCH_STEPS = [{ id: 'fetch', label: '抓取页面标题与简介' }];
 type PublishedSnapshot = {
   links: Resource[];
   status: Record<string, LinkStatus>;
+  publishedAt?: string;
   /** null 表示老快照里没存过图标映射（那时图标还在仓库里），不拿它当「全部归零」来比 */
   icons: Record<string, string> | null;
 };
@@ -301,6 +228,7 @@ const readPublishedSnapshot = (): PublishedSnapshot => {
   try {
     const raw = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8'));
     return {
+      publishedAt: raw.publishedAt,
       links: (raw.links ?? []) as Resource[],
       status: (raw.status ?? {}) as Record<string, LinkStatus>,
       icons: (raw.icons ?? null) as Record<string, string> | null,
@@ -310,38 +238,17 @@ const readPublishedSnapshot = (): PublishedSnapshot => {
   }
 };
 
-const readPublished = (): Resource[] => readPublishedSnapshot().links;
-
-const writePublished = (rows: Resource[], status: Record<string, LinkStatus>, icons: Record<string, string>) => {
-  const target = resolve(ROOT, PUBLISHED_REL);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(
-    target,
-    `${JSON.stringify({ publishedAt: new Date().toISOString(), links: rows, status, icons }, null, 2)}\n`,
-  );
+const publishChanges = (published: PublishedSnapshot, current: PublishedSnapshot) => {
+  const urls = new Set([...Object.keys(published.status), ...Object.keys(current.status)]);
+  const statusChanged = [...urls].some((url) => JSON.stringify(published.status[url]) !== JSON.stringify(current.status[url]));
+  return {
+    ...diffRowDetails(published.links, current.links),
+    statusChanged,
+    icons: published.icons ? diffIconMaps(published.icons, current.icons) : [],
+  };
 };
 
-/** 与上次发布对比，得出待发布的新增/删除/修改条数 */
-const pendingDiff = (rows: Resource[]) => diffRows(readPublished(), rows);
-
-const hasPending = (rows: Resource[]) => {
-  const { added, removed, changed } = pendingDiff(rows);
-  return added + removed + changed > 0;
-};
-
-const handlePublishPreview = () => {
-  const rows = readRows();
-  const published = readPublishedSnapshot();
-  const statuses = readStatuses();
-  // 只比两次快照都有的地址：上次发布后新收的行本来就没有旧状态。
-  const statusChanged = Object.keys(published.status).some(
-    (url) => JSON.stringify(published.status[url]) !== JSON.stringify(statuses[url]),
-  );
-  // 图标现在字节在 Storage、映射在 icons 表，仓库里不再有文件要提交；
-  // 但「这次发布会换掉哪些域名」仍然值得先看见，所以拿上次发布的快照做一次真实对比。
-  const icons = published.icons ? diffIconMaps(published.icons, readIcons()) : [];
-  return json({ ok: true, ...diffRowDetails(published.links, rows), statusChanged, icons });
-};
+const handlePublishPreview = () => json({ ok: true, ...publishChanges(readPublishedSnapshot(), readCache()) });
 
 const handleDuplicates = async (request: Request) => {
   let body: Record<string, unknown>;
@@ -551,7 +458,7 @@ const runBatchMetaTask = async (
           facets: {},
           desc: clean('desc' in meta ? meta.desc : '', 120),
           added: new Date().toISOString().slice(0, 10),
-          note: 'note' in meta ? meta.note : 'reason' in meta ? meta.reason : '',
+          hint: 'note' in meta ? meta.note : 'reason' in meta ? meta.reason : '',
         };
         done++;
         tasks.progress(id, done, pending.length);
@@ -603,6 +510,8 @@ const handleBatchAdd = async (request: Request) => {
       facets: source.facets ?? {},
       desc: clean(source.desc, 120),
       added: source.added || new Date().toISOString().slice(0, 10),
+      note: source.note,
+      read: source.read,
     };
     if (!row.title) return json({ ok: false, message: `第 ${index + 1} 条标题不能为空` }, 400);
     if (!row.desc) return json({ ok: false, message: `第 ${index + 1} 条简介不能为空` }, 400);
@@ -614,7 +523,7 @@ const handleBatchAdd = async (request: Request) => {
     if (errors.length) return json({ ok: false, message: '草稿校验未通过', errors }, 400);
     return json({ ok: true, message: '草稿有效' });
   }
-  return applyEdit([...rows, ...prepared], `已批量新增 ${prepared.length} 条资源`);
+  return applyEdit(rows, prepared, `已批量新增 ${prepared.length} 条资源`);
 };
 
 /** 书签导入：书签里没有简介，占位文案写实情，导入后一概记为「待看」 */
@@ -627,15 +536,6 @@ const handleImportBookmarks = async (request: Request) => {
   } catch {
     return json({ ok: false, message: '请求体不是合法 JSON' }, 400);
   }
-  const html = typeof body?.html === 'string' ? body.html : '';
-  if (!html) return json({ ok: false, message: '没读到书签文件内容' }, 400);
-  if (html.length > 8_000_000) return json({ ok: false, message: '书签文件太大（上限 8 MB）' }, 413);
-
-  const parsed = parseBookmarks(html);
-  if (!parsed.items.length) {
-    return json({ ok: false, message: '文件里没找到链接，最好选浏览器导出的「书签 HTML」' }, 422);
-  }
-
   if (body?.commit === true) {
     const input = Array.isArray(body?.rows) ? body.rows : [];
     if (!input.length) return json({ ok: false, message: '没有待导入的条目' }, 400);
@@ -670,13 +570,23 @@ const handleImportBookmarks = async (request: Request) => {
       return json({ ok: false, message: `还有 ${missing.length} 条没选分区`, missing }, 400);
     }
     if (!prepared.length) return json({ ok: false, message: '这些条目都已存在，没新增' }, 409);
-    return applyEdit([...rows, ...prepared], `已导入 ${prepared.length} 条（都标为待看）`);
+    return applyEdit(rows, prepared, `已导入 ${prepared.length} 条（都标为待看）`);
   }
 
-  const rows = readRows();
-  const occupied = new Set(rows.map((row) => urlKey(row.url)));
+  const html = typeof body?.html === 'string' ? body.html : '';
+  if (!html) return json({ ok: false, message: '没读到书签文件内容' }, 400);
+  if (html.length > 8_000_000) return json({ ok: false, message: '书签文件太大（上限 8 MB）' }, 413);
+
+  const parsed = parseBookmarks(html);
+  if (!parsed.items.length) {
+    return json({ ok: false, message: '文件里没找到链接，最好选浏览器导出的「书签 HTML」' }, 422);
+  }
+
+  const occupied = new Set(readRows().map((row) => urlKey(row.url)));
   const skipped: { url: string; reason: string }[] = [];
   const drafts = [];
+  const vocab = taxonomy();
+  const added = new Date().toISOString().slice(0, 10);
   for (const item of parsed.items) {
     const key = urlKey(item.url);
     if (!key) {
@@ -688,17 +598,16 @@ const handleImportBookmarks = async (request: Request) => {
       continue;
     }
     occupied.add(key);
-    const rule = suggestFor(item.url, taxonomy());
-    drafts.push({
+    const rule = suggestFor(item.url, vocab);
+    const row = {
       title: tidyTitle(item.title, item.url),
       url: item.url,
       section: rule?.section ?? [],
       facets: rule?.facets ?? {},
       desc: IMPORT_DESC,
-      added: new Date().toISOString().slice(0, 10),
-      folder: item.folder,
-      guessed: Boolean(rule),
-    });
+      added,
+    };
+    drafts.push({ ...row, folder: item.folder, ready: !validateRows([row], vocab, added).errors.length });
   }
   return json({ ok: true, drafts, skipped, total: parsed.total });
 };
@@ -728,10 +637,10 @@ const handleEdit = async (request: Request) => {
   if (action === 'add' && previous) return json({ ok: false, message: `这条已在库里：${previous.url}` }, 409);
   if (action !== 'add' && !previous) return json({ ok: false, message: `库里没有这条：${target.url}` }, 404);
   if (action === 'delete') {
-    return applyDelete(rows, index);
+    return applyDelete(previous);
   }
 
-  const replacement = action === 'update' && body.newUrl !== undefined ? normUrl(body.newUrl) : target;
+  const replacement = previous ? (body.newUrl === undefined ? { url: previous.url } : normUrl(body.newUrl)) : target;
   if (!replacement.url) return json({ ok: false, message: replacement.error }, 400);
   const replacementKey = urlKey(replacement.url);
   if (
@@ -759,9 +668,7 @@ const handleEdit = async (request: Request) => {
   if (row.read === undefined) delete (row as { read?: unknown }).read;
   if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
   if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);
-  const next = previous ? rows.map((r, i) => (i === index ? row : r)) : [...rows, row];
-  const response = await applyEdit(next, `${previous ? '已更新' : '已新增'}：${row.title}`, previous ? { from: previous.url, to: row.url } : undefined);
-  return response;
+  return applyEdit(rows, [row], `${previous ? '已更新' : '已新增'}：${row.title}`, previous);
 };
 
 /** gh CLI 已经用你的账号登录过（gh auth login），所以触发重建不需要额外的 token。
@@ -798,17 +705,13 @@ const runPublishTask = async (id: string) => {
     tasks.mark(id, 'sync', 'running');
     const client = clientFor();
     const data = await refreshCache(client);
-    store.rows = data.links;
-    store.statuses = data.status as Record<string, LinkStatus>;
-    store.loaded = true;
-    const validation = validateRows(store.rows, taxonomy());
+    const validation = validateRows(data.links, taxonomy());
     if (validation.errors.length) {
       const detail = `数据校验未通过，已中止发布（${validation.errors.length} 个问题）`;
       return tasks.fail(id, { stepId: 'sync', message: detail, result: { ok: false, message: detail, errors: validation.errors } });
     }
     warns.push(...validation.warns);
-    const before = pendingDiff(store.rows);
-    tasks.mark(id, 'sync', 'ok', `${store.rows.length} 条资源`);
+    tasks.mark(id, 'sync', 'ok', `${data.links.length} 条资源`);
 
     tasks.mark(id, 'icons', 'running');
     let total = 0;
@@ -836,6 +739,9 @@ const runPublishTask = async (id: string) => {
       total ? `${done}/${total} 个域名` : icons.ok ? '没有要抓的域名' : '脚本报错，已跳过',
     );
 
+    // 补图标子进程也刷新缓存；快照要记触发重建时的数据，而不是补图标之前的版本。
+    const { links, status, icons: iconMap } = readCache();
+    const before = diffRows(readPublishedSnapshot().links, links);
     tasks.mark(id, 'dispatch', 'running');
     const branch = currentBranch();
     try {
@@ -844,7 +750,7 @@ const runPublishTask = async (id: string) => {
       const detail = `触发失败：${gitError(error) || '请确认本机装了 gh 并已 gh auth login'}`;
       return tasks.fail(id, { stepId: 'dispatch', message: detail, result: { ok: false, message: detail } });
     }
-    writePublished(store.rows, store.statuses, store.icons);
+    writeCache({ publishedAt: new Date().toISOString(), links, status, icons: iconMap }, resolve(ROOT, PUBLISHED_REL));
     tasks.mark(id, 'dispatch', 'ok', branch);
     const parts = [
       before.added ? `新增 ${before.added} 条` : '',
@@ -860,8 +766,9 @@ const runPublishTask = async (id: string) => {
 };
 
 const handleStatus = () => {
-  const rows = readRows();
-  const diff = pendingDiff(rows);
+  const current = readCache();
+  const published = readPublishedSnapshot();
+  const { added, removed, changed, statusChanged, icons } = publishChanges(published, current);
   const branch = currentBranch();
   // 发布只触发 Actions 重建、不推代码，所以本地未推送的提交得在工具条里提示出来。
   const remoteRef = `origin/${branch}`;
@@ -869,29 +776,23 @@ const handleStatus = () => {
   const count = (range: string) => (hasRemote ? Number(gitOr(['rev-list', '--count', range], '0')) : null);
   const ahead = count(`${remoteRef}..HEAD`);
   const behind = count(`HEAD..${remoteRef}`);
-  let publishedAt: string | null = null;
-  try {
-    publishedAt = JSON.parse(readFileSync(resolve(ROOT, PUBLISHED_REL), 'utf8')).publishedAt ?? null;
-  } catch {
-    publishedAt = null;
-  }
   return json({
     ok: true,
-    dirty: diff.added + diff.removed + diff.changed > 0,
-    ...diff,
+    dirty: Boolean(added.length || removed.length || changed.length || statusChanged || icons.length),
+    added: added.length, removed: removed.length, changed: changed.length,
     branch,
     ahead,
     behind,
-    total: rows.length,
-    publishedAt,
+    total: current.links.length,
+    publishedAt: published.publishedAt ?? null,
     head: gitOr(['rev-parse', '--short', 'HEAD'], '?'),
   });
 };
 
 
 const handleMaintenance = () => {
-  const rows = readRows();
-  return json({ ok: true, tasks: maintenanceTasks(rows, readStatuses()) });
+  const { links, status } = readCache();
+  return json({ ok: true, tasks: maintenanceTasks(links, status) });
 };
 
 const handleRecheck = async (request: Request) => {
@@ -914,10 +815,9 @@ const handleRecheck = async (request: Request) => {
   } catch (error) {
     return json({ ok: false, message: `写库失败：${(error as Error).message}` }, 502);
   }
-  store.statuses[row.url] = status;
-  await refreshCache(client);
-  // 维护面板靠这份列表整体重画：只回一条会把别的待办从界面上抹掉
-  return json({ ok: true, status, tasks: maintenanceTasks(rows, readStatuses()) });
+  const data = await refreshCache(client);
+  // 重定向链不落库；本次复查的待办仍能给出具体原因。
+  return json({ ok: true, status, tasks: maintenanceTasks(data.links, { ...data.status, [row.url]: status }) });
 };
 
 /**

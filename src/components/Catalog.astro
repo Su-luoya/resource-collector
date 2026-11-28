@@ -60,7 +60,7 @@ const total = cards.length;
 /** 「待看」是一个全局状态轴，与分区无关；没有条目就整行不要出 */
 const unread = unreadCount(cards);
 const rows = unread
-  ? [...facetRows, { id: 'read', label: '状态', hint: '只在本地标记，不影响他人', values: [{ id: 'unread', label: '待看', count: unread }] }]
+  ? [...facetRows, { id: 'read', label: '状态', hint: '待看标记随资源一起发布', values: [{ id: 'unread', label: '待看', count: unread }] }]
   : facetRows;
 
 /** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉。

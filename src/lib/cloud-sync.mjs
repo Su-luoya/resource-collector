@@ -4,7 +4,7 @@
  * 缓存 `.cache/links.json`（git-ignored）是构建期唯一的输入：页面、校验、图标脚本都读它。
  * 写入路径不走缓存，一律直接对库操作，写完再刷新缓存，免得两处状态打架。
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from './cloud.mjs';
@@ -71,7 +71,10 @@ export const pullCache = async (client = clientFor()) => {
 
 export const writeCache = (data, file = cachePath()) => {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  // 同步和编辑可能并行；读者只能看见完整的一版。
+  const temp = `${file}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`);
+  renameSync(temp, file);
   return file;
 };
 

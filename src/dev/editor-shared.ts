@@ -4,10 +4,10 @@ import type { TaskSnapshot } from './task';
 import type { ToastTone } from './toast';
 
 export type Row = Resource;
-export type Draft = Row & { note?: string };
+export type Draft = Row & { hint?: string };
 export type LinkTask = { kind: 'fail' | 'redirect'; reason: string; row: Row; status: LinkStatus };
 export type Skipped = { url: string; reason: string; row?: Row };
-export type ImportDraft = Draft & { folder?: string; guessed?: boolean };
+export type ImportDraft = Draft & { folder?: string; ready: boolean };
 export type ImportReply = { ok: boolean; message?: string; drafts?: ImportDraft[]; skipped?: Skipped[]; total?: number };
 export type ScanGroup = { kind: string; label: string; items: Row[] };
 export type DuplicateReply = {
@@ -37,7 +37,6 @@ export type ApiReply = {
   dirty?: boolean;
   ahead?: number | null;
   behind?: number | null;
-  pushed?: boolean;
   added?: number;
   removed?: number;
   changed?: number;
@@ -49,7 +48,7 @@ export type ApiReply = {
 };
 
 export type MetaReply = ApiReply & {
-  rules?: { section?: string[]; facets?: Record<string, Record<string, unknown>> } | null;
+  rules?: { section?: string[]; facets?: Row['facets'] } | null;
 };
 
 export type AiDraftReply = ApiReply & {
@@ -76,6 +75,19 @@ export type Deps = {
 };
 
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** 只发从打开表单起改过的字段；清空和「没有编辑」在 API 里是两件事。 */
+export const editPayload = (previous: Row | null, draft: Row) => {
+  if (!previous) return { action: 'add', ...draft };
+  const patch: Record<string, unknown> = { action: 'update', url: previous.url };
+  if (draft.url !== previous.url) patch.newUrl = draft.url;
+  for (const key of ['title', 'desc', 'added', 'section', 'facets', 'note', 'read'] as const) {
+    if (JSON.stringify(draft[key]) !== JSON.stringify(previous[key])) {
+      patch[key] = draft[key] ?? (key === 'read' ? true : '');
+    }
+  }
+  return patch;
+};
 
 export const externalLink = (label: string, href: string) => {
   const link = document.createElement('a');

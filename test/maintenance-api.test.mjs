@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import { startFakeCloud } from './helpers/cloud.mjs';
-import { readCache, writeCache } from '../src/lib/cloud-sync.mjs';
+import { readCache, refreshCache } from '../src/lib/cloud-sync.mjs';
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { dev } from 'astro';
+import { editPayload } from '../src/dev/editor-shared.ts';
 
 test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态同步与删除清理', async (t) => {
   const root = process.cwd();
@@ -54,6 +55,7 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
   for (const file of [
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
+    'src/lib/http-body.mjs',
     'src/lib/link-data.mjs',
     'src/lib/cloud.mjs',
     'src/lib/cloud-sync.mjs',
@@ -71,19 +73,17 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
   }
   writeFileSync('src/pages/index.astro', 'fixture');
   const link = (title, url) => ({ title, url, section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: title, added: '2026-01-01' });
-  const cloud = await startFakeCloud({ links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)] });
+  const cloud = await startFakeCloud({
+    links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)],
+    status: [
+      { url: redirect, status: 'redirect', code: 200, target: final, checked: '2026-08-01' },
+      { url: failed, status: 'fail', code: 404, checked: '2026-08-01' },
+      { url: warn, status: 'warn', code: 403, checked: '2026-08-01' },
+    ],
+  });
   cloud.use();
   t.after(() => cloud.close());
-  writeCache({
-    syncedAt: new Date().toISOString(),
-    links: [link('Redirect', redirect), link('Failed', failed), link('Warn', warn), link('Occupied', occupied)],
-    status: {
-      [redirect]: { url: redirect, status: 'redirect', code: 200, final, checked: '2026-08-01' },
-      [failed]: { url: failed, status: 'fail', code: 404, checked: '2026-08-01' },
-      [warn]: { url: warn, status: 'warn', code: 403, checked: '2026-08-01' },
-    },
-    icons: {},
-  });
+  await refreshCache();
 
   const server = await dev({ root: repo, configFile: false, logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
   try {
@@ -142,11 +142,41 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.equal((await api('edit', { action: 'update', url: final, title: '改个名字' })).ok, true);
     assert.equal(rowNow().note, '- 结论：留着');
     assert.equal(rowNow().read, false);
-    // 传空笔记与 read:true：字段真的从 YAML 里消失
-    assert.equal((await api('edit', { action: 'update', url: final, note: '', read: true })).ok, true);
+    // 传空笔记与 read:true：缓存里不再带可选字段
+    const opened = rowNow();
+    const { note, read, ...cleared } = opened;
+    assert.equal((await api('edit', editPayload(opened, cleared))).ok, true);
     assert.equal(rowNow().note, undefined);
     assert.equal(rowNow().read, undefined);
 
+    await t.test('缓存落后时，不覆盖云端新增、未编辑的列或已经占用的新地址', async () => {
+      const occupiedLater = origin + '/taken';
+      cloud.tables.links.set(occupiedLater, link('云端新增', occupiedLater));
+      const add = await api('edit', { ...link('不能覆盖', occupiedLater), action: 'add' });
+      const move = await api('edit', { action: 'update', url: final, newUrl: occupiedLater });
+      assert.equal(add.ok, false);
+      assert.equal(move.ok, false);
+      assert.equal(cloud.tables.links.get(occupiedLater).title, '云端新增');
+      assert.ok(urls().includes(final));
+      cloud.tables.links.delete(occupiedLater);
+      const before = rowNow();
+      cloud.tables.links.get(final).note = '云端笔记';
+      await refreshCache();
+      const change = editPayload(before, { ...before, title: '本地标题' });
+      assert.deepEqual(change, { action: 'update', url: final, title: '本地标题' });
+      assert.equal((await api('edit', change)).ok, true);
+      assert.equal(rowNow().note, '云端笔记');
+    });
+
+    await t.test('只改路径末尾斜杠也要原地改主键、保留体检，不产生两条', async () => {
+      const before = rowNow();
+      const edited = await api('edit', editPayload(before, { ...before, url: final + '/' }));
+      assert.equal(edited.ok, true, edited.message);
+      assert.ok(!urls().includes(final));
+      assert.ok(urls().includes(final + '/'));
+      assert.equal(statuses()[final + '/']?.status, 'ok');
+      assert.equal(readCache().links.length, 4);
+    });
 
     const removed = await api('edit', { action: 'delete', url: failed });
     assert.equal(removed.ok, true, removed.message);
@@ -164,7 +194,8 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.match(partial.message, /体检状态没清掉/);
     assert.ok(urls().includes(moved), '行必须已经写进去');
     assert.ok(!urls().includes(warn), '旧地址已经不在了');
-    assert.notEqual(statuses()[warn], undefined, '这一步失败，旧状态行会留在库里');
+    assert.equal(statuses()[warn], undefined);
+    assert.equal(statuses()[moved]?.status, 'warn', '清理失败时，外键仍跟着新地址');
     assert.equal((await api('edit', { action: 'delete', url: moved })).ok, true);
   } finally {
     await server.stop();

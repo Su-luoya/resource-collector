@@ -85,14 +85,14 @@ const fakeFetch = (calls, reply = ({ url }) => ({ status: 200, body: /select=url
   return { ok: status < 400, status, statusText: '', text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
 };
 
-test('upsertLinks 一个请求写一批行', async () => {
+test('insertLinks 一个请求写一批行，不覆盖与缓存冲突的主键', async () => {
   const calls = [];
   const client = createClient({ url: 'https://x.supabase.co/', key: 'k', fetchImpl: fakeFetch(calls, () => ({ status: 201, body: '' })) });
-  await client.upsertLinks([link, { ...link, url: 'https://example.com/cd' }]);
+  await client.insertLinks([link, { ...link, url: 'https://example.com/cd' }]);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\/rest\/v1\/links\?on_conflict=url$/);
+  assert.match(calls[0].url, /\/rest\/v1\/links$/);
   assert.equal(calls[0].method, 'POST');
-  assert.equal(calls[0].prefer, 'resolution=merge-duplicates,return=minimal');
+  assert.equal(calls[0].prefer, 'return=minimal');
   assert.equal(calls[0].body.length, 2);
   assert.equal(calls[0].body[0].unread, true, 'read: false 要变成 unread: true');
   assert.equal(calls[0].body[1].url, 'https://example.com/cd');
@@ -101,7 +101,7 @@ test('upsertLinks 一个请求写一批行', async () => {
 test('空数组什么都不写', async () => {
   const calls = [];
   const client = createClient({ url: 'https://x.supabase.co', key: 'k', fetchImpl: fakeFetch(calls) });
-  await client.upsertLinks([]);
+  await client.insertLinks([]);
   await client.upsertStatuses([]);
   await client.upsertIcons([]);
   assert.deepEqual(calls, []);
@@ -126,6 +126,11 @@ test('整表读取按 offset 翻页：服务端每页只给 2 行也拿得全', 
   assert.equal(calls.length, 4, '2+2+1 行，再请求一页空的才算读完');
 });
 
+test('整表读取：意外的成功响应不能被当作空表', async () => {
+  const client = createClient({ url: 'https://x.invalid', key: 'k', fetchImpl: fakeFetch([], () => ({ status: 200, body: { message: 'unexpected shape' } })) });
+  await assert.rejects(() => client.listLinks(), /links.*数组/);
+});
+
 test('upsertStatuses 一个请求写完一轮体检', async () => {
   const calls = [];
   const client = createClient({ url: 'https://x.supabase.co', key: 'k', fetchImpl: fakeFetch(calls, () => ({ status: 201, body: '' })) });
@@ -146,5 +151,5 @@ test('出错时把状态码与响应片段带进异常', async () => {
     key: 'k',
     fetchImpl: fakeFetch(calls, () => ({ status: 403, body: '{"message":"permission denied for table links"}' })),
   });
-  await assert.rejects(() => client.upsertLink(link), /HTTP 403.*permission denied/);
+  await assert.rejects(() => client.insertLinks([link]), /HTTP 403.*permission denied/);
 });

@@ -3,6 +3,7 @@
 import './editor.css';
 import {
   $,
+  editPayload,
   externalLink,
   ticker,
   twoStep,
@@ -74,7 +75,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const panels = Array.from(dlg.querySelectorAll<HTMLElement>('[data-panel]'));
   const pageSection = host.dataset.section || '';
 
-  let editing: string | null = null;
+  let editing: { row: Row; initial: Row } | null = null;
   let qualitySeq = 0;
   let aiSeq = 0;
   let batchActive = false;
@@ -189,10 +190,10 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     return out;
   }
 
-  function fillFacets(row: Row | null) {
+  function fillFacets(facets?: Row['facets']) {
     for (const panel of panels) {
       const sid = panel.dataset.panel || '';
-      const vals = row?.facets?.[sid] ?? {};
+      const vals = facets?.[sid] ?? {};
       for (const input of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-facet-id]')) {
         const value = vals[input.dataset.facetId || ''];
         if (input instanceof HTMLSelectElement) input.value = typeof value === 'string' ? value : '';
@@ -232,7 +233,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     // 卡片外面还包着一层 .card-slot（给「详情」链接留位置），连带它一起去掉，否则留下一个空格子
     (card.closest('.card-slot') ?? card).remove();
     // 「显示 N / 总数」、分区与分类计数、最近 7 天全交给 filter.ts 重算：它从 DOM 现取卡片
-    document.dispatchEvent(new CustomEvent('dev:cards-changed'));
+    document.dispatchEvent(new CustomEvent('dev:cards-changed', { detail: card }));
   };
 
   /** 写库要往返一次 Supabase（通常 0.5–2 秒）。这段时间卡片必须自己说「正在写」，
@@ -375,11 +376,12 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       const url = card.getAttribute('href') ?? '';
       const on = pick.checked;
       if (event.shiftKey && lastPickedUrl) {
-        const from = cardEls.findIndex((item) => (item.getAttribute('href') ?? '') === lastPickedUrl);
-        const to = cardEls.indexOf(card);
+        const visible = cardEls.filter((item) => item.isConnected && !item.parentElement?.hidden);
+        const from = visible.findIndex((item) => (item.getAttribute('href') ?? '') === lastPickedUrl);
+        const to = visible.indexOf(card);
         if (from >= 0 && to >= 0) {
           const [start, end] = from <= to ? [from, to] : [to, from];
-          for (let index = start; index <= end; index++) setPick(cardEls[index], on);
+          for (let index = start; index <= end; index++) setPick(visible[index], on);
           lastPickedUrl = url;
           return;
         }
@@ -431,7 +433,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     checking.textContent = '检查中…';
     urlFeedback.append(checking);
     urlFeedback.hidden = false;
-    const res = await send<DuplicateReply>('duplicates', { url: value, title: title.value, excludeUrl: editing });
+    const res = await send<DuplicateReply>('duplicates', { url: value, title: title.value, excludeUrl: editing?.row.url });
     if (seq !== qualitySeq) return;
     urlFeedback.replaceChildren();
     if (!res.ok) {
@@ -480,7 +482,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       toast('请先完成或放弃当前批量导入，再编辑其他资源。', { tone: 'bad' });
       return;
     }
-    editing = isDraft ? null : row?.url ?? null;
     heading.textContent = isDraft ? `批量导入 · ${batchIndex + 1}/${batchDrafts.length}` : row ? '编辑资源' : '新增资源';
     url.value = suggestedUrl ?? row?.url ?? '';
     title.value = row?.title ?? '';
@@ -490,8 +491,9 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     readBox.checked = row?.read === false;
     const picked = row?.section?.length ? row.section : pageSection ? [pageSection] : [];
     for (const box of sectionBoxes) box.checked = picked.includes(box.value);
-    fillFacets(row);
+    fillFacets(row?.facets);
     syncPanels();
+    editing = row && !isDraft ? { row, initial: { ...currentDraft(), url: row.url } } : null;
     deleteBtn.hidden = isDraft || !row;
     deleteBtn.disabled = false;
     deleteBtn.textContent = '删除';
@@ -501,6 +503,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     saveBtn.disabled = false;
     saveBtn.textContent = isDraft ? (batchIndex === batchDrafts.length - 1 ? '校验并写入整批' : '确认，下一条') : '保存';
     const notes = [suggestedUrl && suggestedUrl !== row?.url ? '已填入建议的新地址，保存前请确认' : ''];
+    if (isDraft && row?.hint) notes.push(row.hint);
     if (isDraft && batchIndex === 0 && batchSkippedRows.length) notes.push(`已跳过 ${batchSkippedRows.length} 条无效或重复 URL`);
     fetchMsg.textContent = notes.filter(Boolean).join(' · ');
     aiMsg.textContent = '';
@@ -547,7 +550,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const rules = res.rules;
     if (rules?.section?.length && !editing && !sectionBoxes.some((box) => box.checked)) {
       for (const box of sectionBoxes) box.checked = rules.section.includes(box.value);
-      fillFacets({ facets: rules.facets } as unknown as Draft);
+      fillFacets(rules.facets);
       syncPanels();
       filled.push('分区与分类（按域名猜的，请核对）');
     }
@@ -611,7 +614,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const picked = new Set(merged.section ?? []);
     for (const box of sectionBoxes) box.checked = picked.has(box.value);
     syncPanels();
-    fillFacets({ ...currentDraft(), facets: merged.facets });
+    fillFacets(merged.facets);
 
     const parts = [`已生成（${Math.round((res.ms ?? 0) / 1000)} 秒）`];
     if (res.kept?.length && !overwrite) parts.push(`保留了你的${res.kept.join('、')}`);
@@ -632,7 +635,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     const label = name ? `「${name}」` : '这条';
     setCardBusy(targetUrl, true, '删除中…');
     // 从编辑弹窗里删时，卡片被弹窗盖着，忙碌态看不到：暂停按钮自己说话
-    const inDialog = dlg.open && editing === targetUrl;
+    const inDialog = dlg.open && editing?.row.url === targetUrl;
     if (inDialog) {
       deleteBtn.disabled = true;
       deleteBtn.textContent = '删除中…';
@@ -700,12 +703,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       return;
     }
 
-    const payload = {
-      action: editing ? 'update' : 'add',
-      ...currentDraft(),
-      url: editing ?? nextUrl,
-      ...(editing ? { newUrl: nextUrl } : {}),
-    };
+    const payload = editPayload(editing?.initial ?? null, currentDraft());
     const restore = saveBtn.textContent || '保存';
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中…';
@@ -724,15 +722,16 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   });
 
   deleteBtn.addEventListener('click', () => {
-    if (editing) void remove(editing, title.value, currentDraft());
+    if (editing) void remove(editing.row.url, editing.row.title, editing.row);
   });
+  const pauseDraft = () => {
+    if (batchActive) batchDrafts[batchIndex] = { ...currentDraft(), hint: batchDrafts[batchIndex].hint };
+  };
   cancelBtn.addEventListener('click', () => {
-    if (batchActive) batchDrafts[batchIndex] = currentDraft();
+    pauseDraft();
     dlg.close();
   });
-  dlg.addEventListener('cancel', () => {
-    if (batchActive) batchDrafts[batchIndex] = currentDraft();
-  });
+  dlg.addEventListener('cancel', pauseDraft);
   fetchBtn.addEventListener('click', () => void fetchMeta());
 
   // 回车不提交原生表单（否则会带 query 重载页面）
@@ -929,7 +928,7 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     { label: '新增资源', hint: '打开新增表单', run: () => open(null) },
     { label: '批量导入', hint: '一次粘贴多条 URL', run: () => batchBtn.click() },
     { label: '链接维护', hint: '失效与重定向待确认', run: () => maintenanceBtn.click() },
-    { label: '发布', hint: '校验、补图标、提交并推送', run: () => publishBtn.click() },
+    { label: '发布', hint: '校验、补图标、触发远端重建', run: () => publishBtn.click() },
     { label: '全库查重', hint: '同 URL、清参数后相同、同站点同名', run: () => scanBtn.click() },
     { label: '聚焦搜索框', hint: '/', run: () => document.getElementById('q')?.focus() },
     { label: '重新加载页面', hint: '未保存的草稿会丢', run: () => location.reload() },

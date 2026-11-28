@@ -67,6 +67,7 @@ test('AI 生成：只读页面正文、编造依据被拦、默认不覆盖已�
   for (const file of [
     'src/middleware.ts',
     'src/lib/dev-meta.mjs',
+    'src/lib/http-body.mjs',
     'src/lib/ai-draft.mjs',
     'src/lib/link-rules.mjs',
     'src/lib/bookmarks-html.mjs',
