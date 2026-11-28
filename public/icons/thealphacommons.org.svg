@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="AlphaCommons">
+  <!-- Greek small letter alpha, U+03B1, outlined from GFS Didot (SIL OFL) so
+       the icon carries no font dependency. GFS Didot is a Greek-native face,
+       which is why this reads as an alpha rather than a Latin approximation.
+       Gallery variant 017: GFS Didot regular, forest-to-amber.
+
+       The previous tab icon was logo-symbol.svg, a 600x280 wordmark squashed
+       into a 16px square — hence the "half a tail". This is square by
+       construction and centred on its own bounding box. -->
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2E7D32"/>
+      <stop offset="100%" stop-color="#F2A341"/>
+    </linearGradient>
+  </defs>
+  <path transform="translate(7.946 79.496) scale(0.12880 -0.12880)"
+        d="M606 95Q606 57 589 26Q570 -11 531.5 -11.0Q493 -11 464 51Q452 74 432 151Q393 75 346.5 32.0Q300 -11 224.0 -11.0Q148 -11 97.5 52.5Q47 116 47 198Q47 304 98 381Q156 469 258 469Q400 469 414 289L479 457H581L449 178Q460 140 487.0 110.5Q514 81 546.0 81.0Q578 81 604 119Q606 105 606 95ZM391 254Q391 313 363 356Q328 406 274 406Q203 406 160 318Q124 246 124 168Q124 20 210 20Q264 20 327.5 114.5Q391 209 391 254Z" fill="url(#a)" fill-rule="nonzero"/>
+</svg>
