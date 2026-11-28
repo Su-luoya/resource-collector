@@ -20,7 +20,6 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -31,11 +30,12 @@ jobs:
       # check 的 precheck 会先 npm run sync，把云端数据拉成 .cache/links.json
       - run: npm run check
       - run: npm test
-      - run: npm run typecheck
+      # 复用这一份已校验的缓存；不要在类型检查和构建前各自再拉一份。
+      - run: npm --ignore-scripts run typecheck
       # 图标字节在 Supabase Storage：上面 npm run check 的 precheck（npm run sync）
       # 已经把它们下到 public/icons/（git-ignored），构建产物里就是本地静态文件。
       # 这里不跑 npm run icons：CI 没有写库权限，也不该抓站。
-      - run: npm run build
+      - run: npm --ignore-scripts run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -92,6 +92,8 @@
 
 ## 命令
 
+需要 Node.js 22.23.4 或更新版本。
+
 ```bash
 npm install
 npm run dev       # 本地预览 http://localhost:4321/resource-collector（带增删改）
@@ -116,7 +118,7 @@ npm run icons     # 抓 favicon → Supabase Storage 桶 icons（--force 强制�
 | `SUPABASE_SECRET_KEY` | 可写，dev 编辑与周检写库；只在本地与 Actions 里，绝不进前端 |
 | `SUPABASE_DB_PASSWORD` | 可选，仅 `psql` 直连改表结构时用，dev 与 Actions 都不读 |
 
-表结构见 `supabase/schema.sql`（三张表 + RLS：匿名只读，写只走 secret key）。
+表结构见 `supabase/schema.sql`（三张表 + RLS：匿名只读，写只走 secret key）。已有库请在 SQL Editor 执行 `supabase/migrations/0003_link_url_cascade.sql`，再使用改地址和周检自动修复。
 
 ## 代码结构
 
