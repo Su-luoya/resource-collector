@@ -1,6 +1,7 @@
 ---
 import Catalog from '../components/Catalog.astro';
 import { SECTIONS, navItems, sectionCount, links } from '../lib/links';
+import { SITE_NAME } from '../lib/site';
 
 const facetRows = [
   {
@@ -18,7 +19,7 @@ const facetRows = [
 ---
 
 <Catalog
-  heading="资源库"
+  heading={SITE_NAME}
   meta={`${links.length} 条 · ${SECTIONS.length} 个分区 · 最近更新 ${links[0]?.added ?? '—'}`}
   placeholder="搜索标题、简介、分类、域名（多词用空格分隔）"
   nav={navItems()}

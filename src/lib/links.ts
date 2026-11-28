@@ -37,8 +37,6 @@ export type Resource = {
   facets: Record<string, Record<string, string | string[]>>;
   desc: string;
   added: string;
-  /** 可选笔记（Markdown 子集）：为什么收它、关键结论；只在详情页渲染 */
-  note?: string;
   /** 待看：只有 read: false 才写进数据，没有这个字段就是「已看过」 */
   read?: boolean;
 };
@@ -192,7 +190,6 @@ export const searchText = (l: Resource): string =>
       .flatMap(([, values]) => Object.entries(values).flatMap(([k, v]) => [k, asList(v).join(' ')]))
       .join(' '),
     hostOf(l.url),
-    l.note ?? '',
   ]
     .join(' ')
     .toLowerCase();

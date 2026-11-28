@@ -141,7 +141,6 @@ function apply() {
       sections: (card.dataset.section || '').split(' ').filter(Boolean),
       host: card.dataset.host || '',
       unread: card.dataset.read === '1',
-      hasNote: card.dataset.note === '1',
       status: card.dataset.status || '',
     });
   let n = 0;
@@ -178,7 +177,7 @@ function apply() {
   const notes: string[] = [];
   if (active.some((axis) => picked[axis].size > 1)) notes.push('同一行内取并集');
   if (active.length > 1) notes.push('不同行取交集');
-  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:unread / is:read / is:note / is:fail / is:warn`);
+  if (parsed.unknownFlags.length) notes.push(`不认识 is:${parsed.unknownFlags.join(' / is:')}，可用 is:unread / is:read / is:fail / is:warn`);
   hint.textContent = notes.length ? `（${notes.join('，')}）` : '';
 
   for (const chip of chips) {

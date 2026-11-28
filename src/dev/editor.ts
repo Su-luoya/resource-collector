@@ -36,7 +36,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
   const title = $<HTMLInputElement>('f-title');
   const desc = $<HTMLTextAreaElement>('f-desc');
   const added = $<HTMLInputElement>('f-added');
-  const note = $<HTMLTextAreaElement>('f-note');
   const readBox = $<HTMLInputElement>('f-read');
   const fetchBtn = $<HTMLButtonElement>('f-fetch');
   const fetchMsg = $<HTMLSpanElement>('f-fetch-msg');
@@ -158,7 +157,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
       desc: card.querySelector('.desc')?.textContent?.trim() ?? '',
       added: el.dataset.added ?? '',
       ...(el.dataset.read === '1' ? { read: false } : {}),
-      ...(el.dataset.noteText ? { note: el.dataset.noteText } : {}),
     };
   };
 
@@ -399,7 +397,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     desc: desc.value,
     added: added.value,
     ...(readBox.checked ? { read: false } : {}),
-    ...(note.value.trim() ? { note: note.value.trim() } : {}),
     section: sectionBoxes.filter((box) => box.checked).map((box) => box.value),
     facets: collectFacets(),
   });
@@ -487,7 +484,6 @@ function init(host: HTMLElement, dlg: HTMLDialogElement) {
     title.value = row?.title ?? '';
     desc.value = row?.desc ?? '';
     added.value = row?.added ?? today();
-    note.value = row?.note ?? '';
     readBox.checked = row?.read === false;
     const picked = row?.section?.length ? row.section : pageSection ? [pageSection] : [];
     for (const box of sectionBoxes) box.checked = picked.includes(box.value);

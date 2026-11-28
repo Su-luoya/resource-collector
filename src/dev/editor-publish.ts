@@ -84,7 +84,7 @@ export const setupPublish = ({ send, say, guardBatch }: Deps) => {
           item.append(name);
           const fields = [
             ['title', '标题'], ['url', 'URL'], ['desc', '简介'],
-            ['section', '分区'], ['facets', '分类'], ['added', '收录日期'], ['note', '笔记'], ['read', '阅读状态'],
+            ['section', '分区'], ['facets', '分类'], ['added', '收录日期'], ['read', '阅读状态'],
           ] as const;
           for (const [key, label] of fields) {
             if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;

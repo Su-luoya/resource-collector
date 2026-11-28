@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { links, SECTION_LABEL, facetLabels } from '../lib/links';
-import { homeUrl } from '../lib/site';
+import { homeUrl, SITE_NAME } from '../lib/site';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -31,9 +31,9 @@ export const GET: APIRoute = () => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>资源库 · 最近新增</title>
+    <title>${esc(SITE_NAME)} · 最近新增</title>
     <link>${esc(homeUrl)}</link>
-    <description>个人网络资源库最新收录的链接</description>
+    <description>个人网络书库最新收录的链接</description>
     <language>zh-CN</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${esc(homeUrl)}rss.xml" rel="self" type="application/rss+xml" />

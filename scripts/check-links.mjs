@@ -40,7 +40,7 @@ if (errors.length) throw new Error(`自动修复后的数据未通过校验：\n
 
 let writeFailed = 0;
 let fixedCount = 0;
-// 只改 URL 列：这几分钟里别人改过的标题、笔记不能被快照冲掉。
+// 只改 URL 列：这几分钟里别人改过的标题、简介不能被快照冲掉。
 for (const fix of fixed.fixes) {
   try {
     await client.updateLink(fix.from, { url: fix.to });

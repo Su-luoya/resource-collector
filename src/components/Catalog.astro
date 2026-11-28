@@ -2,7 +2,7 @@
 // 首页与分区页共用的页面骨架：头部 / 分区导航 / 分面 chips / 卡片墙 / dev 编辑层。
 // 页面只负责算出「这一页有哪些卡片、哪些轴」，markup 不重复写两遍。
 import Base from '../layouts/Base.astro';
-import { base } from '../lib/site';
+import { base, SITE_NAME } from '../lib/site';
 import { THEMES } from '../lib/theme.mjs';
 import {
   SECTIONS,
@@ -64,9 +64,9 @@ const rows = unread
   : facetRows;
 
 /** 编辑层只在 dev 存在：markup 条件渲染，逻辑用动态 import，构建时整块被摇掉。
- *  data-facets / data-note-text 只有 dev 编辑层读（笔记的正文已经进了 data-search），线上不输出。 */
+ *  data-facets 只有 dev 编辑层读，线上不输出。 */
 const DEV = import.meta.env.DEV;
-const title = heading === '资源库' ? '资源库' : `${heading} · 资源库`;
+const title = heading === SITE_NAME ? SITE_NAME : `${heading} · ${SITE_NAME}`;
 const description = `${heading}：${total} 条资源${hint ? `（${hint}）` : ''}，可搜索与按分类筛选。`;
 const jsonHref = `${base}links.json`;
 const rssHref = `${base}rss.xml`;
@@ -249,9 +249,8 @@ const rssHref = `${base}rss.xml`;
             data-added={l.added}
             data-host={host}
             data-read={l.read === false ? '1' : ''}
-            data-note={l.note ? '1' : ''}
             data-status={st?.status ?? ''}
-            {...(DEV ? { 'data-facets': JSON.stringify(l.facets), 'data-note-text': l.note ?? '' } : {})}
+            {...(DEV ? { 'data-facets': JSON.stringify(l.facets) } : {})}
           >
             <span class="card-top">
               <span class="fav">
@@ -285,7 +284,7 @@ const rssHref = `${base}rss.xml`;
             </span>
             <span class="host">{host}</span>
           </a>
-          <a class="card-detail" href={linkHref(l)} title={l.note ? '详情与笔记' : '详情'}>详情</a>
+          <a class="card-detail" href={linkHref(l)} title="详情">详情</a>
           </div>
         );
       })
@@ -293,6 +292,8 @@ const rssHref = `${base}rss.xml`;
   </div>
 
   <p class="empty" id="empty" hidden>没有匹配的资源，试试别的关键词，或去掉一两项筛选。</p>
+
+  <button class="to-top" id="to-top" type="button" aria-label="回到顶部" hidden>↑</button>
 
   <footer>
     <span>数据源：<a href="https://github.com/Su-luoya/resource-collector">Su-luoya/resource-collector</a> 的 Supabase 数据库（本站静态生成）</span>
@@ -345,11 +346,6 @@ const rssHref = `${base}rss.xml`;
           <label class="dev-field">
             <span>收录日期</span>
             <input id="f-added" type="date" />
-          </label>
-
-          <label class="dev-field">
-            <span>笔记 <em>可选，Markdown：段落 / - 列表 / **粗体** / `代码` / [文字](链接)</em></span>
-            <textarea id="f-note" rows="4" maxlength="4000" placeholder="为什么收它、关键结论是什么（只写在详情页）"></textarea>
           </label>
 
           <label class="dev-check">
@@ -501,5 +497,6 @@ const rssHref = `${base}rss.xml`;
 
 <script>
   import '../client/filter';
+  import '../client/top';
 </script>
 </Base>

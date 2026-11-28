@@ -156,11 +156,10 @@ test('批量导入、相似候选与发布前差异：都只经 dev 接口，写
     assert.match(missingDesc.message, /简介不能为空/);
 
     const written = await api('batch-add', {
-      rows: [draft('https://c.example.com', { note: '手写笔记', read: false }), draft('https://d.example.com')],
+      rows: [draft('https://c.example.com', { read: false }), draft('https://d.example.com')],
     });
     assert.equal(written.ok, true, written.message);
     const saved = readCache().links.find((row) => row.url === 'https://c.example.com/');
-    assert.equal(saved.note, '手写笔记');
     assert.equal(saved.read, false);
     assert.deepEqual(urls(), [
       'https://a.example.com/p',

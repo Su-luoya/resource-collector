@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { writeCache } from '../src/lib/cloud-sync.mjs';
 import { startFakeCloud } from './helpers/cloud.mjs';
 
-test('周检只改地址：不覆盖新笔记或已被占用的目标，部分写入时仍通知重建', async (t) => {
+test('周检只改地址：不覆盖云端新改的简介或已被占用的目标，部分写入时仍通知重建', async (t) => {
   const scratch = resolve('.scratch');
   mkdirSync(scratch, { recursive: true });
   const cwd = mkdtempSync(join(scratch, 'weekly-'));
@@ -15,7 +15,7 @@ test('周检只改地址：不覆盖新笔记或已被占用的目标，部分�
   const row = (title) => ({ title, url: 'https://weekly.example/' + title, section: ['tools'], facets: { tools: { kind: 'tool' } }, desc: title, added: '2026-01-01' });
   const [one, two] = ['one', 'two'].map(row);
   const taken = row('two-new');
-  const cloud = await startFakeCloud({ links: [{ ...one, note: '云端刚改的笔记' }, two, taken] });
+  const cloud = await startFakeCloud({ links: [{ ...one, desc: '云端刚改的简介' }, two, taken] });
   t.after(() => cloud.close());
   cloud.use();
   const output = join(cwd, 'output');
@@ -32,7 +32,7 @@ test('周检只改地址：不覆盖新笔记或已被占用的目标，部分�
     cwd, env: { ...process.env, GITHUB_OUTPUT: output },
   });
   await assert.rejects(run, (err) => err.code === 1 && err.stdout.includes('自动修复 1') && err.stderr.includes('duplicate url'));
-  assert.equal(cloud.tables.links.get(one.url + '-new').note, '云端刚改的笔记');
+  assert.equal(cloud.tables.links.get(one.url + '-new').desc, '云端刚改的简介');
   assert.ok(cloud.tables.links.has(two.url));
   assert.deepEqual(cloud.tables.links.get(taken.url), taken);
   assert.ok(!cloud.tables.link_status.has(taken.url));

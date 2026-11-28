@@ -19,7 +19,7 @@ const describeSection = (section) => {
 export const buildPrompt = ({ url, pageTitle = '', text = '', taxonomy }) => {
   const sections = (taxonomy?.sections ?? []).map(describeSection).join('\n');
   return [
-    '你在给一个个人资源库（书签收藏）补元信息。只能依据下面给出的页面正文，',
+    '你在给一个个人网络书库 Stacks（书签收藏）补元信息。只能依据下面给出的页面正文，',
     '不要用你自己的知识补充作者、机构、版本、功能或任何正文里没写的事实。',
     '',
     `目标 URL：${escapeLine(url)}`,

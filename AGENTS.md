@@ -1,6 +1,6 @@
 # 本项目约定
 
-个人资源库（书签收藏）+ GitHub Pages 展示站。数据在 Supabase（Postgres），构建时拉成 `.cache/links.json`，页面全部由它生成。
+Stacks（个人网络书库 / 书签收藏）+ GitHub Pages 展示站。数据在 Supabase（Postgres），构建时拉成 `.cache/links.json`，页面全部由它生成。站名只在 `src/lib/site.ts` 的 `SITE_NAME` 一处，改名不要直接改文案。
 
 ## 日常动作：用户发来新链接时
 
@@ -15,9 +15,6 @@
      desc: "一句中文简介，≤120 字，说清「是什么 + 有什么用」"
      added: YYYY-MM-DD             # 当天日期
      read: false                   # 可选：待看。数据里没这个字段就是「已看过」
-     note: |                       # 可选：详情页里的笔记，Markdown 子集（段落/列表/粗体/行内代码/链接）
-       - 为什么收它
-       - 关键结论
    ```
 2. `desc` 只写用户能验证的事实（官网自述、实际页面内容）。**不要编造**作者、机构、功能。抓不到页面内容就先问用户，或写保守描述。
 3. 新域名的图标由发布时的 `npm run icons` 抓取并传进 Supabase Storage（桶 `icons`，public read）；构建前 `npm run sync` 把缺的下到 `public/icons/`（git-ignored）。**图标是数据，仓库里不存图片文件**，也不要再提交 `public/icons/` 下的任何东西。
@@ -31,7 +28,6 @@
 - 学者页的 `field` 判不出来就留 `[]`，不要为了填满而编造研究方向。
 - 「最近 7 天」只是浏览层的视图，不新增分区、不改卡片结构；`added` 是收录日期（不改成「最后修改」）。置顶功能已下线（`pin` 字段整体移除），不要再加回来。
 - 详情页地址由 URL 派生（`src/lib/slug.mjs` 的 `slugMap`），YAML 里**不存 slug 字段**：改 URL 就等于换地址，同一个地址永远得到同一个 slug（撞车按 URL 排序补 `-2`，与行序无关）。
-- 笔记 `note` 只渲染 Markdown 子集，渲染前先转义 HTML、链接只认 http(s)；不要为了排版去引 markdown 库或写 HTML。
 - 采集/一键收录只调 `api/meta`（响应里带 `rules` 落点建议），建议来自 `src/lib/link-rules.mjs` 的域名规则表（命中才给分区与分类，认不出就是空）；「落点建议」不能猜。
 - 不改 `astro.config.mjs` 的 `base`，除非仓库改名（改了两处要同步：`site` + `base`）。
 - 不引入前端框架/UI 库/CDN 资源。图标走 `public/icons/`（本地文件，提交前由 `npm run sync` 从 Storage 落盘），字体走系统栈。
@@ -43,7 +39,7 @@
 ## 关键文件
 
 - `src/lib/theme.mjs` — 配色主题清单（16 项：跟随系统 + 15 套，其中 light/dark 是站点原始青绿配色、默认用它俩，其余 13 套色板取自 pi-web），与 `src/styles/global.css` 的 `[data-theme]` 块一一对应，`test/theme.test.mjs` 守着两边不漂
-- `supabase/schema.sql` — 表结构（links / link_status / icons + RLS：宓名只读，写只走 secret key）
+- `supabase/schema.sql` — 表结构（links / link_status / icons + RLS：宓名只读，写只走 secret key）；建表语句与老库的 `drop column if exists` 保持同步（pin、note 都已下线）
 - `src/lib/cloud.mjs` / `cloud-sync.mjs` — 行 ↔ 内部对象的转换、PostgREST 封装、`.cache/links.json` 的拉取与写入
 - `src/data/taxonomy.json` — 分区与分类词表：`sections`（分区 → 各自的 facets 轴与取值，`badge` 指定卡片徽标用哪条轴）
 - `src/lib/links.ts` — 词表加载、分区过滤与计数、徽标文案、排序（转出 `compareNewest`）、搜索文本、图标表读取
@@ -51,8 +47,9 @@
 - `src/components/Catalog.astro` — 首页与分区页共用的页面骨架（导航 / chips / 卡片墙 / dev 表单）
 - `src/pages/index.astro` — 全部条目；`src/pages/[section].astro` — 10 个分区页（路由由 taxonomy 生成）
 - `src/client/filter.ts` — 客户端筛选：轴从 chip 的 `data-facet` 读，首页只有 section 一条轴；还负责卡片重排、搜索高亮、最近 7 天开关、待看开关
+- `src/client/top.ts` — 回到顶部按钮（`#to-top`）：滚过一屏才出现，尊重 reduced-motion
 - `src/client/search.ts` — 搜索框解析：分面前缀（`#scholar` 之类）、`domain:`、`is:`、`unread` 伪轴，以及标题/简介/域名的匹配与排序
-- `src/pages/l/[slug].astro` — 每条资源的详情页（页数随数据走，由 slug 派生）；`src/lib/slug.mjs` 负责生成地址，`src/lib/note.mjs` 负责笔记的 Markdown 子集渲染
+- `src/pages/l/[slug].astro` — 每条资源的详情页（页数随数据走，由 slug 派生）；`src/lib/slug.mjs` 负责生成地址
 - `src/pages/sitemap.xml.ts` — 静态 sitemap（首页 / 10 个分区 / 每条资源详情页）
 - `src/styles/global.css` — 全部样式（含深浅色变量）
 - `scripts/validate.mjs` / `check-links.mjs` / `fetch-icons.mjs`（图标脚本的失败缓存规则在 `src/lib/icon-cache.mjs`）
@@ -67,7 +64,7 @@
 - `src/lib/link-rules.mjs` — 采集用的域名规则表（`suggestFor`）：arxiv/ssrn/nber 等 → `lit/stream`、scholar.google → `lit/search`、fred/kaggle → `data`、pypi/npm 等注册表 → `tools/lib`、substack/medium → `tools/blog`，认不出返回 `null`；规则命中只给分区与分类，不给简介
 - `src/lib/bookmarks-html.mjs` — 浏览器书签 HTML 的解析（`parseBookmarks` → `{ items, skipped, total }`）与标题清洗（`tidyTitle`），导入前只产草稿不写盘
 - 「收录书签」：dev 工具条的 `#dev-capture` 在 `src/dev/editor.ts` 里现场拼一段 `javascript:`，把当前页地址与标题用 `?add=&title=` 带回预览站；页面载入时读到这两个参数就直接开新增表单。没有服务端参与，也没有单独的脚本文件
-- `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的表单（新增/编辑/删除、抓元信息、AI 生成、笔记编辑器）、批量导入、卡片多选与撤销、`⌘K` 命令面板，仅 dev 加载
+- `src/dev/editor.ts` + `src/dev/editor.css` — 预览站里的表单（新增/编辑/删除、抓元信息、AI 生成）、批量导入、卡片多选与撤销、`⌘K` 命令面板，仅 dev 加载
 - `src/dev/editor-scan.ts` / `editor-import.ts` / `editor-maintenance.ts` / `editor-publish.ts` — 四个对话框各自一个文件（全库查重、书签导入、链接维护、发布与任务进度）；`editor-shared.ts` 放共用的元素查找、小工具与 `Deps`（`send` / `say` / `flash` / `refresh` / `guardBatch` / `openForm`），由 `editor.ts` 的 `init` 造好再分发
 - `src/dev/task.ts` / `src/dev/toast.ts` / `src/dev/command-palette.ts` — 仅 dev：任务进度渲染、右下角提示队列（可带撤销/重试）、⌘K 命令面板
 - `.github/workflows/deploy.yml`（push 即部署）、`link-check.yml`（每周链接体检并提交结果）

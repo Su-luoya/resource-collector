@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-import { base } from '../lib/site';
+import { base, SITE_NAME } from '../lib/site';
 import { THEME_IDS } from '../lib/theme.mjs';
 
 interface Props {
@@ -10,8 +10,8 @@ interface Props {
   type?: string;
 }
 const {
-  title = '资源库',
-  description = '个人网络资源库：经济金融、Python、机器学习、论文写作与 AI 工具的链接索引。',
+  title = SITE_NAME,
+  description = '个人网络书库：经济金融、Python、机器学习、论文写作与 AI 工具的链接索引。',
   type = 'website',
 } = Astro.props;
 
@@ -28,7 +28,7 @@ const canonical = Astro.url.href;
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     <meta property="og:type" content={type} />
-    <meta property="og:site_name" content="资源库" />
+    <meta property="og:site_name" content={SITE_NAME} />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -37,7 +37,7 @@ const canonical = Astro.url.href;
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
-    <link rel="alternate" type="application/rss+xml" title="资源库 · 最近新增" href={`${base}rss.xml`} />
+    <link rel="alternate" type="application/rss+xml" title={`${SITE_NAME} · 最近新增`} href={`${base}rss.xml`} />
     <script is:inline define:vars={{ themeIds: THEME_IDS }}>
       // 在首帧之前定主题，避免闪白；localStorage 里是我删过的旧值就直接当没选。
       try {

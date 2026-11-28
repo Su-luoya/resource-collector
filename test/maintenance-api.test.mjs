@@ -133,20 +133,17 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
     assert.ok(urls().includes(final));
     assert.equal(urls().filter((url) => url === occupied).length, 1);
 
-    // 笔记与待看：部分字段的更新不能把它们洗掉（之前就踩过「编辑冲掉可选字段」的坑）
+    // 待看：部分字段的更新不能把它洗掉（之前就踩过「编辑冲掉可选字段」的坑）
     const rowNow = () => readCache().links.find((row) => row.url === final);
-    assert.equal((await api('edit', { action: 'update', url: final, note: '- 结论：留着', read: false })).ok, true);
-    assert.equal(rowNow().note, '- 结论：留着');
+    assert.equal((await api('edit', { action: 'update', url: final, read: false })).ok, true);
     assert.equal(rowNow().read, false);
-    // 只改标题，note/read 必须守恒
+    // 只改标题，read 必须守恒
     assert.equal((await api('edit', { action: 'update', url: final, title: '改个名字' })).ok, true);
-    assert.equal(rowNow().note, '- 结论：留着');
     assert.equal(rowNow().read, false);
-    // 传空笔记与 read:true：缓存里不再带可选字段
+    // 传 read:true：缓存里不再带可选字段
     const opened = rowNow();
-    const { note, read, ...cleared } = opened;
+    const { read, ...cleared } = opened;
     assert.equal((await api('edit', editPayload(opened, cleared))).ok, true);
-    assert.equal(rowNow().note, undefined);
     assert.equal(rowNow().read, undefined);
 
     await t.test('缓存落后时，不覆盖云端新增、未编辑的列或已经占用的新地址', async () => {
@@ -160,12 +157,12 @@ test('dev 维护闭环：fail 优先、单条复查、URL 更新去重、状态�
       assert.ok(urls().includes(final));
       cloud.tables.links.delete(occupiedLater);
       const before = rowNow();
-      cloud.tables.links.get(final).note = '云端笔记';
+      cloud.tables.links.get(final).desc = '云端改过的简介';
       await refreshCache();
       const change = editPayload(before, { ...before, title: '本地标题' });
       assert.deepEqual(change, { action: 'update', url: final, title: '本地标题' });
       assert.equal((await api('edit', change)).ok, true);
-      assert.equal(rowNow().note, '云端笔记');
+      assert.equal(rowNow().desc, '云端改过的简介');
     });
 
     await t.test('只改路径末尾斜杠也要原地改主键、保留体检，不产生两条', async () => {

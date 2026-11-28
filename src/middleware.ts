@@ -70,7 +70,7 @@ const applyEdit = async (rows: Resource[], changes: unknown[], message: string, 
       const row = changes[0] as Resource;
       const before: Record<string, unknown> = toRow(previous);
       const patch = Object.fromEntries(Object.entries(toRow(row)).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k])));
-      // 只写改过的列：别人在云端改的笔记，不能被本地旧标题编辑一起覆盖。
+      // 只写改过的列：别人在云端改的简介，不能被本地旧标题编辑一起覆盖。
       if (Object.keys(patch).length) await client.updateLink(previous.url, patch);
       if (urlKey(previous.url) !== urlKey(row.url)) {
         // 外键已经跟到新主键；真正换地址时，旧体检不再适用。
@@ -510,7 +510,6 @@ const handleBatchAdd = async (request: Request) => {
       facets: source.facets ?? {},
       desc: clean(source.desc, 120),
       added: source.added || new Date().toISOString().slice(0, 10),
-      note: source.note,
       read: source.read,
     };
     if (!row.title) return json({ ok: false, message: `第 ${index + 1} 条标题不能为空` }, 400);
@@ -659,12 +658,9 @@ const handleEdit = async (request: Request) => {
     facets: body.facets ?? previous?.facets,
     desc: body.desc === undefined ? previous?.desc : clean(body.desc, 120),
     added: body.added == null || body.added === '' ? previous?.added ?? new Date().toISOString().slice(0, 10) : body.added,
-    // 笔记：没传就沿用；传了空字符串就是删掉这篇笔记
-    ...(body.note === undefined ? {} : typeof body.note === 'string' && body.note.trim() ? { note: body.note.trim() } : { note: undefined }),
     // 待看只在 false 时落盘：数据里没这个字段就是「已看过」，不写 read: true
     ...(body.read === undefined ? {} : { read: body.read === false ? false : undefined }),
   };
-  if (row.note === undefined) delete (row as { note?: unknown }).note;
   if (row.read === undefined) delete (row as { read?: unknown }).read;
   if (!row.title) return json({ ok: false, message: '标题不能为空' }, 400);
   if (!row.desc) return json({ ok: false, message: '简介不能为空' }, 400);

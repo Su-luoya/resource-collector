@@ -1,4 +1,4 @@
-# 资源库 · Resource Collector
+# Stacks · Resource Collector
 
 **站点 <https://Su-luoya.github.io/resource-collector/>**
 
@@ -36,7 +36,6 @@
 | `desc` | ✓ | 一句话说明，≤ 120 字（超了卡片会截断） |
 | `added` | ✓ | `YYYY-MM-DD`，列表按它倒序 |
 | `read` | | `false` 标「待看」；不写即已看过 |
-| `note` | | 详情页笔记，Markdown 子集（段落/列表/粗体/行内代码/链接） |
 
 ### 分区与分类
 

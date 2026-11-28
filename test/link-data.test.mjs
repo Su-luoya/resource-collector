@@ -120,16 +120,12 @@ test('空行和写回会丢失的未知字段给出行号，不抛异常', () =>
   assert.equal(warns.length, 1);
 });
 
-test('note / read 是合法字段：能写回，坏类型会被拦下', () => {
-  const ok = validateRows(
-    [row({ url: 'http://a.example.com', note: '- 关键结论\n- 下一步', read: false })],
-    taxonomy,
-    today,
-  );
+test('read 是合法字段：能写回，坏类型会被拦下', () => {
+  const ok = validateRows([row({ url: 'http://a.example.com', read: false })], taxonomy, today);
   assert.deepEqual(ok.errors, []);
 
-  const bad = validateRows([row({ url: 'http://b.example.com', note: 42, read: 'yes' })], taxonomy, today);
-  assert.match(bad.errors.join('\n'), /links\[0\]\.note/);
+  const bad = validateRows([row({ url: 'http://b.example.com', note: '- 旧笔记', read: 'yes' })], taxonomy, today);
+  assert.match(bad.errors.join('\n'), /links\[0\]\.note 未登记/);
   assert.match(bad.errors.join('\n'), /links\[0\]\.read/);
 });
 

@@ -1066,6 +1066,29 @@ footer a:hover {
 }
 
 /* ---- 最近新增提示条：只在有 7 天内新增时由客户端显示 ---- */
+/* 回到顶部：右下角，和底部的 dev 批量选择条不撞（它居中）。显示逻辑在 src/client/top.ts */
+.to-top {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg);
+  background: var(--bg-elev);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.to-top:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .recent-note {
   margin: 0 0 10px;
   font-size: 12px;
@@ -1182,53 +1205,6 @@ footer a:hover {
 .detail-tags a.tag:hover {
   color: var(--accent);
   border-color: var(--accent);
-}
-
-.detail-note {
-  padding: 14px 16px;
-  font-size: 14px;
-  line-height: 1.8;
-  background: var(--bg-elev);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.detail-note > :first-child {
-  margin-top: 0;
-}
-
-.detail-note > :last-child {
-  margin-bottom: 0;
-}
-
-.detail-note ul,
-.detail-note ol {
-  margin: 0 0 10px;
-  padding-left: 20px;
-}
-
-.detail-note code {
-  padding: 1px 5px;
-  font-size: 0.92em;
-  background: var(--bg-soft);
-  border-radius: 4px;
-}
-
-.detail-note pre {
-  margin: 0 0 10px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  background: var(--bg-soft);
-  border-radius: 8px;
-}
-
-.detail-note pre code {
-  padding: 0;
-  background: none;
-}
-
-.detail-note a {
-  color: var(--accent);
 }
 
 .detail-open {

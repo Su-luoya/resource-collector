@@ -1,4 +1,7 @@
-// 站点挂载路径。三处（页面、RSS、Base 布局）以前各自拼一遍，容易漏掉结尾斜杠。
+// 站点名与挂载路径。三处（页面、RSS、Base 布局）以前各自拼一遍，容易漏掉结尾斜杠。
+
+/** 站点名：页面 title、og:site_name、RSS 与详情页共用，改名只改这一处 */
+export const SITE_NAME = 'Stacks';
 
 const raw = import.meta.env.BASE_URL;
 

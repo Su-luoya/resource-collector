@@ -81,7 +81,7 @@ export const editPayload = (previous: Row | null, draft: Row) => {
   if (!previous) return { action: 'add', ...draft };
   const patch: Record<string, unknown> = { action: 'update', url: previous.url };
   if (draft.url !== previous.url) patch.newUrl = draft.url;
-  for (const key of ['title', 'desc', 'added', 'section', 'facets', 'note', 'read'] as const) {
+  for (const key of ['title', 'desc', 'added', 'section', 'facets', 'read'] as const) {
     if (JSON.stringify(draft[key]) !== JSON.stringify(previous[key])) {
       patch[key] = draft[key] ?? (key === 'read' ? true : '');
     }

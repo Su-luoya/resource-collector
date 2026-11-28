@@ -6,7 +6,7 @@
 // 否则 `node scripts/validate.mjs` 会挂。
 import { parse } from 'yaml';
 
-const FIELDS = ['title', 'url', 'section', 'facets', 'desc', 'added', 'note', 'read'];
+const FIELDS = ['title', 'url', 'section', 'facets', 'desc', 'added', 'read'];
 
 /** 双引号标量：与仓库现有写法一致（title/desc 带引号，url/section/added 不带） */
 const q = JSON.stringify;
@@ -41,15 +41,6 @@ const dumpFacets = (facets) =>
         .join(', ')} }`,
   );
 
-/** 多行笔记写成 YAML 块标量：`|` 保留换行，`-` 表示不带结尾换行，跟字段值逐字一致 */
-const dumpNote = (note) => {
-  const text = String(note ?? '');
-  if (!text) return [];
-  if (!text.includes('\n')) return [`  note: ${q(text)}`];
-  const lines = text.split('\n').map((line) => (line ? `    ${line}` : ''));
-  return ['  note: |-', ...lines];
-};
-
 const dumpOne = (r) =>
   [
     `- title: ${q(r.title)}`,
@@ -61,7 +52,6 @@ const dumpOne = (r) =>
     `  added: ${r.added}`,
     // 只有待看才写 read: false；没标记的条目保持原样
     ...(r.read === false ? ['  read: false'] : []),
-    ...dumpNote(r.note),
   ].join('\n') + '\n';
 
 const headerOf = (raw) => raw.match(/^(?:[ \t]*(?:#.*)?(?:\r?\n|$))*/)[0];
@@ -128,12 +118,6 @@ export const validateRows = (rows, taxonomy, today = new Date().toISOString().sl
 
     // 待看标记：只有 read: false 有意义，其余一律当作未标记
     if (l.read !== undefined && typeof l.read !== 'boolean') err(`${at}.read 必须是 true / false`);
-
-    // 笔记是可选的 Markdown；不写就不出现，不占卡片空间
-    if (l.note !== undefined) {
-      if (typeof l.note !== 'string') err(`${at}.note 必须是字符串`);
-      else if (l.note.length > 4000) err(`${at}.note 超过 4000 字`);
-    }
 
     if (typeof l.url === 'string') {
       const key = urlKey(l.url);

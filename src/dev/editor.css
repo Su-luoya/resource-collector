@@ -1055,7 +1055,7 @@ body.dev-bar-open main {
   word-break: break-all;
 }
 
-/* ---------- 笔记 / 待看 / 书签导入 ---------- */
+/* ---------- 待看 / 书签导入 ---------- */
 .dev-check {
   display: flex;
   align-items: center;

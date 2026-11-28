@@ -9,15 +9,16 @@ create table if not exists public.links (
   facets      jsonb not null default '{}'::jsonb,
   "desc"      text not null,
   added       date not null default current_date,
-  note        text,
   unread      boolean not null default false
 );
 
-comment on column public.links.note is 'Markdown 子集写的研究笔记，空值表示没有';
 comment on column public.links.unread is 'true 表示「待看」，对应 YAML 里的 read: false';
 
 -- 置顶功能已下线：老库重跑这份 schema 时顺手把列删掉（新库建表就没有它）
 alter table public.links drop column if exists pin;
+
+-- 笔记功能已下线：老库重跑这份 schema 时一并删列（新库建表就没有它）
+alter table public.links drop column if exists note;
 
 -- updated_at 没人写也没人读（写库走整行 upsert，没有触发器），已从建表语句里删掉；
 -- 老库要跟上的话跑 migrations/0002_drop_updated_at.sql。

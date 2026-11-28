@@ -8,11 +8,11 @@ export type ParsedQuery = {
   unknownFlags: string[];
 };
 
-const KNOWN_FLAGS = new Set(['unread', 'read', 'note', 'fail', 'warn']);
+const KNOWN_FLAGS = new Set(['unread', 'read', 'fail', 'warn']);
 
 /**
  * 把搜索串拆成「前缀行 + 自由词」。
- * 支持 `#分区`、`domain:xxx`、`is:unread|read|note|fail|warn`；其余照旧当自由词做 AND。
+ * 支持 `#分区`、`domain:xxx`、`is:unread|read|fail|warn`；其余照旧当自由词做 AND。
  * 同一类前缀之间取并集，不同类之间取交集——和左侧 chips 的语义保持一致。
  */
 export function parseQuery(query: string): ParsedQuery {
@@ -53,7 +53,6 @@ export type QueryTarget = {
   sections: string[];
   host: string;
   unread: boolean;
-  hasNote: boolean;
   /** 最近一次体检结果：ok / redirect / warn / fail，没有记录是空串 */
   status: string;
 };
@@ -67,7 +66,6 @@ export const matchesQuery = (parsed: ParsedQuery, target: QueryTarget): boolean 
   for (const flag of parsed.flags) {
     if (flag === 'unread' && !target.unread) return false;
     if (flag === 'read' && target.unread) return false;
-    if (flag === 'note' && !target.hasNote) return false;
     if (flag === 'fail' && target.status !== 'fail') return false;
     if (flag === 'warn' && target.status !== 'warn') return false;
   }
